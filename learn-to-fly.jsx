@@ -1,0 +1,776 @@
+import { useState, useEffect, useRef, useCallback } from "react";
+
+// ── Constants ──────────────────────────────────────────────────────────────
+const GRAVITY = 0.18;
+const GROUND_Y = 520;
+const LAUNCH_X = 80;
+
+const UPGRADES = {
+  ramp: {
+    label: "Launch Ramp",
+    icon: "📐",
+    desc: "Steeper ramp = more launch angle",
+    levels: [
+      { name: "Dirt Mound",    cost: 0,    angle: 28, color: "#8B6914" },
+      { name: "Wooden Ramp",   cost: 80,   angle: 36, color: "#A0522D" },
+      { name: "Steel Ramp",    cost: 250,  angle: 42, color: "#708090" },
+      { name: "Rocket Ramp",   cost: 600,  angle: 48, color: "#FF4500" },
+      { name: "Orbital Pad",   cost: 2500, angle: 55, color: "#00CED1" },
+    ],
+  },
+  sled: {
+    label: "Sled",
+    icon: "🛷",
+    desc: "Better sled = higher launch speed",
+    levels: [
+      { name: "Cardboard Box",   cost: 0,    speed: 7,  color: "#DEB887" },
+      { name: "Wooden Sled",     cost: 100,  speed: 9,  color: "#8B4513" },
+      { name: "Plastic Sled",    cost: 280,  speed: 11, color: "#1E90FF" },
+      { name: "Metal Sled",      cost: 700,  speed: 13, color: "#C0C0C0" },
+      { name: "Rocket Sled",     cost: 3000, speed: 16, color: "#FF6347" },
+    ],
+  },
+  glider: {
+    label: "Glider",
+    icon: "🪂",
+    desc: "Better glider reduces drag",
+    levels: [
+      { name: "No Glider",      cost: 0,    drag: 0.0045, color: "#999" },
+      { name: "Paper Wings",    cost: 120,  drag: 0.0028, color: "#FFFACD" },
+      { name: "Hang Glider",    cost: 350,  drag: 0.0015, color: "#32CD32" },
+      { name: "Paraglider",     cost: 900,  drag: 0.0007, color: "#FF69B4" },
+      { name: "Wingsuit",       cost: 3500, drag: 0.0002, color: "#7B68EE" },
+    ],
+  },
+  rocket: {
+    label: "Booster",
+    icon: "🚀",
+    desc: "Mid-air thrust boost",
+    levels: [
+      { name: "None",           cost: 0,    thrust: 0,   fuel: 0   },
+      { name: "Bottle Rocket",  cost: 200,  thrust: 0.3, fuel: 60  },
+      { name: "Firework",       cost: 500,  thrust: 0.6, fuel: 90  },
+      { name: "Jet Engine",     cost: 2200, thrust: 1.1, fuel: 120 },
+      { name: "Ion Thruster",   cost: 7500, thrust: 1.8, fuel: 200 },
+    ],
+  },
+  bounce: {
+    label: "Bounce Pads",
+    icon: "🟡",
+    desc: "Bounce off the ground to keep going!",
+    levels: [
+      { name: "None",            cost: 0,    bounces: 0, restitution: 0    },
+      { name: "Rubber Tummy",    cost: 150,  bounces: 1, restitution: 0.45 },
+      { name: "Spring Belly",    cost: 400,  bounces: 2, restitution: 0.55 },
+      { name: "Bumper Body",     cost: 1000, bounces: 3, restitution: 0.65 },
+      { name: "Super Bouncer",   cost: 4000, bounces: 5, restitution: 0.72 },
+    ],
+  },
+};
+
+const UPGRADE_KEYS = ["ramp", "sled", "glider", "rocket", "bounce"];
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function toRad(deg) { return deg * Math.PI / 180; }
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function fmtDist(px) {
+  const m = Math.round(px / 5);
+  return m >= 1000 ? `${(m/1000).toFixed(2)} km` : `${m} m`;
+}
+
+// ── Main Component ─────────────────────────────────────────────────────────
+export default function LearnToFly() {
+  const canvasRef = useRef(null);
+  const stateRef = useRef(null); // mutable game state
+  const animRef = useRef(null);
+
+  const [screen, setScreen] = useState("menu"); // menu | flying | shop | gameover
+  const [coins, setCoins] = useState(0);
+  const [bestDist, setBestDist] = useState(0);
+  const [upgradeLevels, setUpgradeLevels] = useState({ ramp: 0, sled: 0, glider: 0, rocket: 0, bounce: 0 });
+  const [lastDist, setLastDist] = useState(0);
+  const [lastCoins, setLastCoins] = useState(0);
+  const [shopMsg, setShopMsg] = useState("");
+  const [liveDist, setLiveDist] = useState(0);
+  const [boostActive, setBoostActive] = useState(false);
+
+  // ── Launch ───────────────────────────────────────────────────────────────
+  const startFlight = useCallback((levels) => {
+    const rampData   = UPGRADES.ramp.levels[levels.ramp];
+    const sledData   = UPGRADES.sled.levels[levels.sled];
+    const gliderData = UPGRADES.glider.levels[levels.glider];
+    const rocketData = UPGRADES.rocket.levels[levels.rocket];
+    const bounceData = UPGRADES.bounce.levels[levels.bounce ?? 0];
+
+    const angle = toRad(rampData.angle);
+    const speed = sledData.speed;
+
+    stateRef.current = {
+      x: LAUNCH_X,
+      y: GROUND_Y - 10,
+      vx: Math.cos(angle) * speed,
+      vy: -Math.sin(angle) * speed,
+      drag: gliderData.drag,
+      thrust: rocketData.thrust,
+      fuel: rocketData.fuel,
+      maxFuel: rocketData.fuel,
+      bouncesLeft: bounceData.bounces,
+      maxBounces: bounceData.bounces,
+      restitution: bounceData.restitution,
+      boosting: false,
+      landed: false,
+      dist: 0,
+      cameraX: 0,
+      particles: [],
+      stars: Array.from({ length: 80 }, () => ({
+        x: Math.random() * 4000, y: Math.random() * 300,
+        r: Math.random() * 1.5 + 0.5, a: Math.random()
+      })),
+      clouds: Array.from({ length: 12 }, (_, i) => ({
+        x: i * 300 + 100, y: Math.random() * 200 + 30,
+        w: Math.random() * 80 + 60, h: Math.random() * 30 + 20,
+        speed: Math.random() * 0.2 + 0.1
+      })),
+      levels,
+    };
+    setLiveDist(0);
+    setBoostActive(false);
+    setScreen("flying");
+  }, []);
+
+  // ── Input ────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (screen !== "flying") return;
+    const onKey = (e) => {
+      if (e.code === "Space" && stateRef.current) {
+        e.preventDefault();
+        const s = stateRef.current;
+        if (!s.landed && s.fuel > 0) s.boosting = true;
+      }
+    };
+    const onKeyUp = (e) => {
+      if (e.code === "Space" && stateRef.current) stateRef.current.boosting = false;
+    };
+    const onTouch = () => { if (stateRef.current && !stateRef.current.landed && stateRef.current.fuel > 0) stateRef.current.boosting = true; };
+    const onTouchEnd = () => { if (stateRef.current) stateRef.current.boosting = false; };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("touchstart", onTouch);
+    window.addEventListener("touchend", onTouchEnd);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("touchstart", onTouch);
+      window.removeEventListener("touchend", onTouchEnd);
+    };
+  }, [screen]);
+
+  // ── Game Loop ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (screen !== "flying") return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+
+    const loop = () => {
+      const s = stateRef.current;
+      if (!s) return;
+
+      // Physics
+      if (!s.landed) {
+        s.vy += GRAVITY;
+        if (s.boosting && s.fuel > 0) {
+          const speed = Math.sqrt(s.vx * s.vx + s.vy * s.vy);
+          if (speed > 0) {
+            s.vx += (s.vx / speed) * s.thrust;
+            s.vy += (s.vy / speed) * s.thrust;
+          }
+          s.fuel -= 1;
+          // exhaust particles
+          for (let i = 0; i < 3; i++) {
+            s.particles.push({
+              x: s.x, y: s.y,
+              vx: -s.vx * 0.3 + (Math.random()-0.5)*2,
+              vy: -s.vy * 0.3 + (Math.random()-0.5)*2,
+              life: 1, color: `hsl(${20 + Math.random()*40},100%,60%)`
+            });
+          }
+        }
+        // Drag
+        s.vx *= (1 - s.drag);
+        s.vy *= (1 - s.drag * 0.5);
+
+        s.x += s.vx;
+        s.y += s.vy;
+        s.dist = Math.max(s.dist, s.x - LAUNCH_X);
+
+        if (s.y >= GROUND_Y) {
+          s.y = GROUND_Y;
+          if (s.bouncesLeft > 0 && Math.abs(s.vy) > 1.5) {
+            // Bounce!
+            s.vy = -Math.abs(s.vy) * s.restitution;
+            s.vx *= 0.85;
+            s.bouncesLeft -= 1;
+            // Bounce particles
+            for (let i = 0; i < 8; i++) {
+              s.particles.push({
+                x: s.x, y: s.y,
+                vx: (Math.random()-0.5)*6,
+                vy: -(Math.random()*4+1),
+                life: 1, color: `hsl(${45 + Math.random()*30},100%,60%)`
+              });
+            }
+          } else {
+            s.landed = true;
+          }
+        }
+        s.cameraX = Math.max(0, s.x - 200);
+      }
+
+      // Particles
+      s.particles = s.particles
+        .map(p => ({ ...p, x: p.x + p.vx, y: p.y + p.vy, life: p.life - 0.04 }))
+        .filter(p => p.life > 0);
+
+      setBoostActive(s.boosting && s.fuel > 0);
+      setLiveDist(Math.round(s.dist / 5));
+
+      // Draw
+      drawScene(ctx, canvas, s);
+
+      if (s.landed) {
+        const dist = s.dist;
+        const earned = Math.round(dist / 8);
+        setLastDist(dist);
+        setLastCoins(earned);
+        setCoins(c => c + earned);
+        setBestDist(b => Math.max(b, dist));
+        setTimeout(() => setScreen("gameover"), 600);
+        return;
+      }
+
+      animRef.current = requestAnimationFrame(loop);
+    };
+
+    animRef.current = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(animRef.current);
+  }, [screen]);
+
+  // ── Draw ─────────────────────────────────────────────────────────────────
+  function drawScene(ctx, canvas, s) {
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+
+    // Sky gradient (darker at top when high)
+    const heightFactor = Math.max(0, Math.min(1, (GROUND_Y - s.y) / 400));
+    const skyTop = `hsl(${lerp(200, 220, heightFactor)},${lerp(60,90,heightFactor)}%,${lerp(75,30,heightFactor)}%)`;
+    const skyBot = `hsl(${lerp(190,210,heightFactor)},${lerp(50,80,heightFactor)}%,${lerp(88,55,heightFactor)}%)`;
+    const grad = ctx.createLinearGradient(0,0,0,H);
+    grad.addColorStop(0, skyTop);
+    grad.addColorStop(1, skyBot);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,W,H);
+
+    // Stars (high altitude)
+    if (heightFactor > 0.3) {
+      ctx.save();
+      ctx.globalAlpha = (heightFactor - 0.3) * 1.4;
+      for (const st of s.stars) {
+        const sx = ((st.x - s.cameraX * 0.3) % W + W) % W;
+        ctx.beginPath();
+        ctx.arc(sx, st.y, st.r, 0, Math.PI*2);
+        ctx.fillStyle = `rgba(255,255,255,${st.a})`;
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // Clouds
+    ctx.save();
+    ctx.globalAlpha = Math.max(0.1, 1 - heightFactor * 1.5);
+    for (const cl of s.clouds) {
+      const cx = ((cl.x - s.cameraX * 0.4) % (W + 200) + W + 200) % (W + 200) - 100;
+      ctx.fillStyle = "rgba(255,255,255,0.8)";
+      ctx.beginPath();
+      ctx.ellipse(cx, cl.y, cl.w, cl.h, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(cx - cl.w*0.4, cl.y + 5, cl.w*0.6, cl.h*0.8, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(cx + cl.w*0.4, cl.y + 8, cl.w*0.7, cl.h*0.7, 0, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // Distance markers on ground
+    ctx.save();
+    for (let m = 0; m < 20000; m += 500) {
+      const mx = m - s.cameraX;
+      if (mx < -50 || mx > W + 50) continue;
+      ctx.strokeStyle = "rgba(255,255,255,0.4)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4,4]);
+      ctx.beginPath(); ctx.moveTo(mx, 0); ctx.lineTo(mx, H); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(255,255,255,0.6)";
+      ctx.font = "11px monospace";
+      ctx.fillText(fmtDist(m), mx + 4, GROUND_Y - 5);
+    }
+    ctx.restore();
+
+    // Ground
+    const groundGrad = ctx.createLinearGradient(0, GROUND_Y, 0, H);
+    groundGrad.addColorStop(0, "#3a7d44");
+    groundGrad.addColorStop(0.15, "#2d6a3a");
+    groundGrad.addColorStop(1, "#1a3d22");
+    ctx.fillStyle = groundGrad;
+    ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+
+    // Snow caps far right (just flavor)
+    for (let i = 1; i <= 5; i++) {
+      const mx = i * 1200 - s.cameraX;
+      if (mx < -200 || mx > W + 200) continue;
+      ctx.fillStyle = "rgba(255,255,255,0.25)";
+      ctx.beginPath();
+      ctx.moveTo(mx - 40, GROUND_Y);
+      ctx.lineTo(mx, GROUND_Y - 60);
+      ctx.lineTo(mx + 40, GROUND_Y);
+      ctx.fill();
+    }
+
+    // Ramp
+    const rampData = UPGRADES.ramp.levels[s.levels.ramp];
+    const rampX = LAUNCH_X - s.cameraX;
+    const rampLen = 80;
+    const angle = toRad(rampData.angle);
+    ctx.save();
+    ctx.strokeStyle = rampData.color;
+    ctx.lineWidth = 6;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(rampX - 20, GROUND_Y);
+    ctx.lineTo(rampX + Math.cos(angle) * rampLen, GROUND_Y - Math.sin(angle) * rampLen);
+    ctx.stroke();
+    // ramp support
+    ctx.strokeStyle = "rgba(0,0,0,0.3)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(rampX - 20, GROUND_Y);
+    ctx.lineTo(rampX, GROUND_Y);
+    ctx.stroke();
+    ctx.restore();
+
+    // Particles
+    for (const p of s.particles) {
+      const px = p.x - s.cameraX;
+      ctx.save();
+      ctx.globalAlpha = p.life;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(px, p.y, 3, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Player (penguin/sled)
+    const px = s.x - s.cameraX;
+    const py = s.y;
+    const gliderData = UPGRADES.glider.levels[s.levels.glider];
+    const sledData = UPGRADES.sled.levels[s.levels.sled];
+
+    ctx.save();
+    ctx.translate(px, py);
+    const velAngle = s.landed ? 0 : Math.atan2(s.vy, s.vx);
+    ctx.rotate(velAngle);
+
+    // Glider wings (if level > 0)
+    if (s.levels.glider > 0 && !s.landed) {
+      ctx.fillStyle = gliderData.color;
+      ctx.globalAlpha = 0.85;
+      ctx.beginPath();
+      ctx.moveTo(0, -5);
+      ctx.lineTo(-50, -20);
+      ctx.lineTo(-40, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(0, -5);
+      ctx.lineTo(50, -20);
+      ctx.lineTo(40, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // Sled
+    ctx.fillStyle = sledData.color;
+    ctx.beginPath();
+    ctx.roundRect(-18, -6, 36, 10, 4);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,0.3)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Penguin body
+    ctx.fillStyle = "#111";
+    ctx.beginPath();
+    ctx.ellipse(0, -16, 10, 14, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.ellipse(0, -15, 6, 10, 0, 0, Math.PI*2);
+    ctx.fill();
+    // Eyes
+    ctx.fillStyle = "#fff";
+    ctx.beginPath(); ctx.arc(-4, -22, 3, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(4, -22, 3, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#000";
+    ctx.beginPath(); ctx.arc(-3.5, -22, 1.5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(4.5, -22, 1.5, 0, Math.PI*2); ctx.fill();
+    // Beak
+    ctx.fillStyle = "#FF8C00";
+    ctx.beginPath();
+    ctx.moveTo(0, -19); ctx.lineTo(5, -17); ctx.lineTo(0, -15); ctx.closePath();
+    ctx.fill();
+
+    // Rocket flame
+    if (s.boosting && s.fuel > 0) {
+      ctx.globalAlpha = 0.9;
+      const flameGrad = ctx.createRadialGradient(-20, 0, 0, -20, 0, 20);
+      flameGrad.addColorStop(0, "#FFF");
+      flameGrad.addColorStop(0.3, "#FF0");
+      flameGrad.addColorStop(1, "rgba(255,50,0,0)");
+      ctx.fillStyle = flameGrad;
+      ctx.beginPath();
+      ctx.ellipse(-28, 0, 16 + Math.random()*4, 5, 0, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+
+    // HUD
+    drawHUD(ctx, W, s);
+  }
+
+  function drawHUD(ctx, W, s) {
+    // Distance
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.beginPath();
+    ctx.roundRect(W/2 - 90, 12, 180, 40, 8);
+    ctx.fill();
+    ctx.fillStyle = "#FFD700";
+    ctx.font = "bold 22px 'Courier New', monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(fmtDist(s.dist), W/2, 39);
+    ctx.restore();
+
+    // Fuel bar
+    if (s.levels.rocket > 0 && s.maxFuel > 0) {
+      const barW = 120, barH = 14;
+      const bx = W - barW - 16, by = 16;
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0,0.45)";
+      ctx.beginPath(); ctx.roundRect(bx - 4, by - 4, barW + 8, barH + 24, 6); ctx.fill();
+      ctx.fillStyle = "#333";
+      ctx.beginPath(); ctx.roundRect(bx, by, barW, barH, 4); ctx.fill();
+      const frac = s.fuel / s.maxFuel;
+      const fuelColor = frac > 0.5 ? "#00FF7F" : frac > 0.2 ? "#FFD700" : "#FF4500";
+      ctx.fillStyle = fuelColor;
+      ctx.beginPath(); ctx.roundRect(bx, by, barW * frac, barH, 4); ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.font = "10px monospace";
+      ctx.textAlign = "left";
+      ctx.fillText("🚀 FUEL", bx, by + barH + 14);
+      ctx.restore();
+    }
+
+    // Bounce indicator
+    if (s.maxBounces > 0) {
+      const bx2 = 16, by2 = 16;
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0,0.45)";
+      ctx.beginPath(); ctx.roundRect(bx2 - 4, by2 - 4, 100, 36, 6); ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.font = "10px monospace";
+      ctx.textAlign = "left";
+      ctx.fillText("🟡 BOUNCES", bx2, by2 + 10);
+      for (let i = 0; i < s.maxBounces; i++) {
+        ctx.fillStyle = i < s.bouncesLeft ? "#FFD700" : "#333";
+        ctx.beginPath();
+        ctx.arc(bx2 + 8 + i * 18, by2 + 22, 6, 0, Math.PI*2);
+        ctx.fill();
+        if (i < s.bouncesLeft) {
+          ctx.strokeStyle = "#fff";
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
+    // BOOST hint
+    if (!s.landed && s.fuel > 0 && !s.boosting) {
+      ctx.save();
+      ctx.globalAlpha = 0.7 + Math.sin(Date.now()/300)*0.3;
+      ctx.fillStyle = "#FFD700";
+      ctx.font = "bold 13px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("HOLD SPACE / TAP to BOOST", W/2, GROUND_Y - 30);
+      ctx.restore();
+    }
+  }
+
+  // ── Buy Upgrade ───────────────────────────────────────────────────────────
+  function buyUpgrade(key) {
+    const current = upgradeLevels[key];
+    const next = current + 1;
+    if (next >= UPGRADES[key].levels.length) {
+      setShopMsg("Already maxed out!");
+      setTimeout(() => setShopMsg(""), 1500);
+      return;
+    }
+    const cost = UPGRADES[key].levels[next].cost;
+    if (coins < cost) {
+      setShopMsg(`Need ${cost - coins} more coins!`);
+      setTimeout(() => setShopMsg(""), 1500);
+      return;
+    }
+    setCoins(c => c - cost);
+    setUpgradeLevels(u => ({ ...u, [key]: next }));
+    setShopMsg(`✅ Upgraded to ${UPGRADES[key].levels[next].name}!`);
+    setTimeout(() => setShopMsg(""), 1500);
+  }
+
+  // ── Screens ───────────────────────────────────────────────────────────────
+  if (screen === "flying") {
+    return (
+      <div style={{ background: "#000", display: "flex", flexDirection: "column", alignItems: "center", height: "100vh", justifyContent: "center", fontFamily: "monospace" }}>
+        <canvas ref={canvasRef} width={700} height={560}
+          style={{ border: "3px solid #FFD700", borderRadius: 8, display: "block", maxWidth: "100%", cursor: "pointer" }}
+          onMouseDown={() => { if (stateRef.current && !stateRef.current.landed && stateRef.current.fuel > 0) stateRef.current.boosting = true; }}
+          onMouseUp={() => { if (stateRef.current) stateRef.current.boosting = false; }}
+        />
+        <div style={{ color: "#FFD700", marginTop: 8, fontSize: 13 }}>
+          {boostActive ? "🔥 BOOSTING!" : "HOLD SPACE or CLICK to boost"}
+        </div>
+      </div>
+    );
+  }
+
+  if (screen === "gameover") {
+    return (
+      <div style={styles.screen}>
+        <div style={styles.panel}>
+          <div style={{ fontSize: 48, marginBottom: 8 }}>🐧</div>
+          <h2 style={{ ...styles.title, fontSize: 28, marginBottom: 12 }}>SPLAT!</h2>
+          <div style={styles.statRow}>
+            <span style={styles.statLabel}>Distance</span>
+            <span style={styles.statVal}>{fmtDist(lastDist)}</span>
+          </div>
+          <div style={styles.statRow}>
+            <span style={styles.statLabel}>Coins earned</span>
+            <span style={{ ...styles.statVal, color: "#FFD700" }}>+{lastCoins} 🪙</span>
+          </div>
+          <div style={styles.statRow}>
+            <span style={styles.statLabel}>Best distance</span>
+            <span style={{ ...styles.statVal, color: "#00FF7F" }}>{fmtDist(bestDist)}</span>
+          </div>
+          <div style={styles.statRow}>
+            <span style={styles.statLabel}>Total coins</span>
+            <span style={{ ...styles.statVal, color: "#FFD700" }}>{coins} 🪙</span>
+          </div>
+          <div style={{ display: "flex", gap: 12, marginTop: 20 }}>
+            <button style={styles.btn} onClick={() => startFlight(upgradeLevels)}>🚀 Try Again</button>
+            <button style={{ ...styles.btn, background: "#1a4a1a" }} onClick={() => setScreen("shop")}>🛒 Shop</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (screen === "shop") {
+    return (
+      <div style={styles.screen}>
+        <div style={{ ...styles.panel, maxWidth: 520, width: "95%" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <h2 style={{ ...styles.title, margin: 0, fontSize: 24 }}>⚙️ Upgrade Shop</h2>
+            <div style={{ color: "#FFD700", fontSize: 18, fontWeight: "bold" }}>🪙 {coins}</div>
+          </div>
+
+          {shopMsg && (
+            <div style={{ background: "#2a2a2a", color: "#FFD700", padding: "8px 14px", borderRadius: 6, marginBottom: 12, textAlign: "center", fontSize: 14 }}>
+              {shopMsg}
+            </div>
+          )}
+
+          {UPGRADE_KEYS.map(key => {
+            const upg = UPGRADES[key];
+            const level = upgradeLevels[key];
+            const current = upg.levels[level];
+            const next = upg.levels[level + 1];
+            const maxed = level >= upg.levels.length - 1;
+            return (
+              <div key={key} style={styles.upgradeCard}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontSize: 22 }}>{upg.icon}</span>
+                      <span style={{ color: "#fff", fontWeight: "bold", fontSize: 15 }}>{upg.label}</span>
+                    </div>
+                    <div style={{ color: "#aaa", fontSize: 12, marginBottom: 6 }}>{upg.desc}</div>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      {upg.levels.map((_, i) => (
+                        <div key={i} style={{
+                          width: 16, height: 8, borderRadius: 2,
+                          background: i <= level ? "#FFD700" : "#333",
+                          border: i === level ? "1px solid #fff" : "1px solid #555"
+                        }} />
+                      ))}
+                    </div>
+                    <div style={{ color: "#ccc", fontSize: 12, marginTop: 6 }}>
+                      Current: <span style={{ color: "#FFD700" }}>{current.name}</span>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    {!maxed ? (
+                      <>
+                        <div style={{ color: "#aaa", fontSize: 11, marginBottom: 4 }}>→ {next.name}</div>
+                        <button
+                          style={{
+                            ...styles.btn,
+                            padding: "6px 14px",
+                            fontSize: 13,
+                            background: coins >= next.cost ? "#1a3a1a" : "#2a1a1a",
+                            borderColor: coins >= next.cost ? "#00FF7F" : "#FF4500",
+                            color: coins >= next.cost ? "#00FF7F" : "#FF4500",
+                          }}
+                          onClick={() => buyUpgrade(key)}
+                        >
+                          🪙 {next.cost}
+                        </button>
+                      </>
+                    ) : (
+                      <div style={{ color: "#FFD700", fontSize: 12, padding: "6px 10px", background: "#2a2a00", borderRadius: 6, border: "1px solid #FFD700" }}>
+                        ⭐ MAXED
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
+            <button style={styles.btn} onClick={() => startFlight(upgradeLevels)}>🚀 Launch!</button>
+            <button style={{ ...styles.btn, background: "#1a1a2a" }} onClick={() => setScreen("menu")}>← Menu</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Menu ──────────────────────────────────────────────────────────────────
+  return (
+    <div style={styles.screen}>
+      <div style={styles.panel}>
+        <div style={{ fontSize: 64, marginBottom: 4, filter: "drop-shadow(0 4px 12px #0008)" }}>🐧</div>
+        <h1 style={{ ...styles.title, fontSize: 36, letterSpacing: 3, marginBottom: 4 }}>LEARN TO FLY</h1>
+        <div style={{ color: "#aaa", fontSize: 13, marginBottom: 24, letterSpacing: 1 }}>
+          A penguin's journey to defy gravity
+        </div>
+
+        {bestDist > 0 && (
+          <div style={{ ...styles.statRow, marginBottom: 16, justifyContent: "center" }}>
+            <span style={{ color: "#aaa" }}>Best:</span>
+            <span style={{ color: "#00FF7F", fontWeight: "bold", marginLeft: 8 }}>{fmtDist(bestDist)}</span>
+            <span style={{ color: "#FFD700", fontWeight: "bold", marginLeft: 16 }}>🪙 {coins}</span>
+          </div>
+        )}
+
+        <button style={{ ...styles.btn, width: "100%", padding: "14px 0", fontSize: 18, marginBottom: 10 }}
+          onClick={() => startFlight(upgradeLevels)}>
+          🚀 LAUNCH!
+        </button>
+        <button style={{ ...styles.btn, width: "100%", padding: "10px 0", fontSize: 15, background: "#1a2a3a" }}
+          onClick={() => setScreen("shop")}>
+          🛒 Upgrades
+        </button>
+
+        <div style={{ marginTop: 20, color: "#555", fontSize: 11, lineHeight: 1.7 }}>
+          SPACE / CLICK / TAP to boost mid-air<br />
+          Earn coins per meter • Buy upgrades • Fly further
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Styles ─────────────────────────────────────────────────────────────────
+const styles = {
+  screen: {
+    minHeight: "100vh",
+    background: "linear-gradient(160deg, #0a0e1a 0%, #0d1f0d 50%, #0a0e1a 100%)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontFamily: "'Courier New', monospace",
+    padding: 16,
+  },
+  panel: {
+    background: "rgba(15,20,30,0.95)",
+    border: "2px solid #FFD700",
+    borderRadius: 16,
+    padding: "28px 32px",
+    maxWidth: 400,
+    width: "100%",
+    boxShadow: "0 0 40px rgba(255,215,0,0.15), 0 20px 60px #000",
+    textAlign: "center",
+  },
+  title: {
+    color: "#FFD700",
+    fontFamily: "'Courier New', monospace",
+    fontWeight: "bold",
+    margin: 0,
+    textShadow: "0 0 20px rgba(255,215,0,0.5)",
+  },
+  btn: {
+    background: "#1a3a1a",
+    border: "2px solid #FFD700",
+    color: "#FFD700",
+    padding: "10px 20px",
+    borderRadius: 8,
+    cursor: "pointer",
+    fontFamily: "'Courier New', monospace",
+    fontWeight: "bold",
+    fontSize: 14,
+    transition: "all 0.15s",
+    letterSpacing: 1,
+  },
+  statRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    padding: "6px 0",
+    borderBottom: "1px solid #1a1a1a",
+  },
+  statLabel: {
+    color: "#888",
+    fontSize: 14,
+  },
+  statVal: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 14,
+  },
+  upgradeCard: {
+    background: "#111820",
+    border: "1px solid #2a3a4a",
+    borderRadius: 10,
+    padding: "12px 14px",
+    marginBottom: 10,
+    textAlign: "left",
+  },
+};

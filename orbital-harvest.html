@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>ORBITAL HARVEST</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;600;700&family=Orbitron:wght@400;700;900&display=swap');
+  :root {
+    --probe: #00FFCC;
+    --bg: #030510;
+    --ui: #8899BB;
+    --gold: #FFD700;
+    --accent: #FF4488;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; touch-action:none; }
+  body { background:var(--bg); font-family:'Rajdhani',sans-serif; overflow:hidden; width:100vw; height:100vh; }
+  canvas { display:block; cursor:crosshair; }
+  #hud {
+    position:fixed; top:0; left:0; right:0;
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 18px; pointer-events:none; z-index:10;
+  }
+  .hud-block { display:flex; flex-direction:column; align-items:center; }
+  .hud-label { font-family:'Orbitron',monospace; font-size:9px; letter-spacing:3px; color:var(--ui); text-transform:uppercase; }
+  .hud-value { font-family:'Orbitron',monospace; font-size:22px; font-weight:700; color:#DDEEFF; line-height:1; text-shadow:0 0 12px rgba(0,180,255,0.6); }
+  #probes-pip { display:flex; gap:5px; align-items:center; margin-top:3px; }
+  .pip { width:7px; height:7px; border-radius:50%; background:var(--probe); box-shadow:0 0 6px var(--probe); transition:all 0.2s; }
+  .pip.used { background:#223; box-shadow:none; }
+  #overlay {
+    position:fixed; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    background:radial-gradient(ellipse at center, rgba(3,5,16,0.88) 0%, rgba(3,5,16,0.97) 100%);
+    z-index:100; gap:16px; transition:opacity 0.4s;
+  }
+  #overlay.hidden { opacity:0; pointer-events:none; }
+  .ov-title {
+    font-family:'Orbitron',monospace; font-size:clamp(28px,7vw,52px); font-weight:900;
+    letter-spacing:6px; color:#fff; text-align:center;
+    text-shadow:0 0 30px rgba(0,255,200,0.5), 0 0 60px rgba(0,180,255,0.3);
+    white-space:pre-line;
+  }
+  .ov-sub { font-family:'Rajdhani',sans-serif; font-size:clamp(13px,3vw,17px); color:var(--ui); letter-spacing:2px; text-align:center; line-height:1.7; max-width:340px; }
+  .btn {
+    font-family:'Orbitron',monospace; font-size:14px; letter-spacing:3px; font-weight:700;
+    color:var(--bg); background:var(--probe); border:none; padding:14px 36px; cursor:pointer;
+    clip-path:polygon(8px 0%,100% 0%,calc(100% - 8px) 100%,0% 100%);
+    transition:all 0.15s; text-transform:uppercase; margin-top:8px;
+  }
+  .btn:hover,.btn:active { background:#fff; transform:scale(1.04); box-shadow:0 0 20px rgba(0,255,200,0.6); }
+  #combo-banner {
+    position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+    font-family:'Orbitron',monospace; font-weight:900; color:var(--gold);
+    text-shadow:0 0 20px rgba(255,215,0,0.9); pointer-events:none; z-index:50;
+    opacity:0; letter-spacing:4px; text-align:center; font-size:0;
+  }
+  #wave-label {
+    position:fixed; bottom:30px; left:50%; transform:translateX(-50%);
+    font-family:'Orbitron',monospace; font-size:11px; letter-spacing:4px; color:var(--ui); pointer-events:none; z-index:10;
+  }
+</style>
+</head>
+<body>
+<div id="hud">
+  <div class="hud-block"><div class="hud-label">Score</div><div class="hud-value" id="sv">0</div></div>
+  <div class="hud-block"><div class="hud-label">Probes</div><div id="probes-pip"></div></div>
+  <div class="hud-block"><div class="hud-label">Best</div><div class="hud-value" id="bv">0</div></div>
+</div>
+<canvas id="c"></canvas>
+<div id="combo-banner"></div>
+<div id="wave-label">WAVE 1</div>
+<div id="overlay">
+  <div class="ov-title">ORBITAL\nHARVEST</div>
+  <div class="ov-sub">Flick probes into orbit.<br>Gravity does the rest.<br>Collect every resource.</div>
+  <button class="btn" id="start-btn">LAUNCH MISSION</button>
+</div>
+<script>
+// ── Canvas setup ─────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+
+let W, H, CX, CY;
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  CX = W/2; CY = H/2;
+}
+resize();
+window.addEventListener('resize', () => { resize(); buildStars(); });
+
+// ── Physics constants ─────────────────────────────────────────────────────────
+// G is tuned so that at typical screen sizes probes curve noticeably.
+// All masses are in arbitrary units where sun=1.
+// Probe launch speed is ~120-200 px/s — slow enough gravity has time to arc it.
+const G            = 18000;  // gravitational constant (px³/s²/mass-unit)
+const SUN_RADIUS   = 28;     // visual + physics radius
+const SUN_MASS     = 3.0;    // dominant attractor
+const PLANET_BASE_MASS = 0.6; // mass at radius 14; scales as (r/14)^2
+const MAX_SPEED    = 220;    // px/s cap on probe launch
+const MAX_DRAG     = 150;    // px
+const TRAIL_MAX    = 80;
+const SUN_KILL_R   = SUN_RADIUS + 6;
+const COLLECT_R    = 22;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const rand  = (a,b) => a + Math.random()*(b-a);
+const clamp = (v,a,b) => Math.max(a, Math.min(b,v));
+const dist  = (a,b) => Math.hypot(a.x-b.x, a.y-b.y);
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let score=0, best=0, wave=1, probesLeft=0;
+let gameActive=false, gameOverPending=false;
+let probes=[], planets=[], resources=[], particles=[], pulses=[], floats=[];
+let combo=0, comboTimeout=null;
+let dragging=false, dragStart=null, dragNow=null;
+let stars=[];
+let lastTime=0;
+
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const overlay    = document.getElementById('overlay');
+const startBtn   = document.getElementById('start-btn');
+const ovTitle    = document.querySelector('.ov-title');
+const ovSub      = document.querySelector('.ov-sub');
+const scoreEl    = document.getElementById('sv');
+const bestEl     = document.getElementById('bv');
+const pipEl      = document.getElementById('probes-pip');
+const comboBanner= document.getElementById('combo-banner');
+const waveLabel  = document.getElementById('wave-label');
+
+// ── Stars ─────────────────────────────────────────────────────────────────────
+function buildStars() {
+  stars = Array.from({length:220}, () => ({
+    x: rand(0,W), y: rand(0,H),
+    r: rand(0.3,1.8), b: rand(0.2,0.9),
+    tw: rand(0,Math.PI*2), spd: rand(0.005,0.02)
+  }));
+}
+buildStars();
+
+// ── Planet configs ────────────────────────────────────────────────────────────
+const PCFG = [
+  {color:'#4488FF', glow:'#1133AA'},
+  {color:'#FF5544', glow:'#882200'},
+  {color:'#44FFAA', glow:'#009955'},
+  {color:'#FF88FF', glow:'#882288'},
+  {color:'#FFAA22', glow:'#885500'},
+  {color:'#88CCFF', glow:'#3366AA'},
+];
+const RES_COLORS = ['#FFD700','#00FFCC','#FF4488'];
+const RES_GLYPHS = ['◆','■','●'];
+
+// ── Create planets ────────────────────────────────────────────────────────────
+function makePlanets(waveNum) {
+  planets = [];
+  const count   = Math.min(2 + Math.floor(waveNum/2), 5);
+  const minOrb  = Math.min(W,H) * 0.18;
+  const maxOrb  = Math.min(W,H) * 0.40;
+  for (let i=0; i<count; i++) {
+    const cfg    = PCFG[i % PCFG.length];
+    const orb    = (minOrb + (maxOrb-minOrb)*(i/(count-1||1))) * rand(0.88,1.12);
+    const angle  = rand(0, Math.PI*2);
+    const radius = rand(14, 22);
+    const mass   = PLANET_BASE_MASS * Math.pow(radius/14, 2); // bigger = heavier
+    const speed  = rand(0.00018, 0.00028) * (i%2===0?1:-1) / Math.sqrt(orb/160);
+    planets.push({ orb, angle, speed, radius, mass, ...cfg,
+      x: CX + Math.cos(angle)*orb,
+      y: CY + Math.sin(angle)*orb
+    });
+  }
+}
+
+// ── Create resources ──────────────────────────────────────────────────────────
+function makeResources(waveNum) {
+  resources = [];
+  const perPlanet = 2 + waveNum;
+  planets.forEach((p, pi) => {
+    for (let i=0; i<perPlanet; i++) {
+      const ang  = (Math.PI*2/perPlanet)*i + rand(-0.2,0.2);
+      const orbd = p.radius + rand(20, 38);
+      resources.push({
+        planetIdx: pi,
+        orbitAng: ang, orbitDist: orbd,
+        x: p.x + Math.cos(ang)*orbd,
+        y: p.y + Math.sin(ang)*orbd,
+        pulse: rand(0,Math.PI*2),
+        type: Math.floor(rand(0,3)),
+        value: 10 + (waveNum-1)*5,
+        collected: false
+      });
+    }
+  });
+}
+
+// ── Gravity ───────────────────────────────────────────────────────────────────
+// Returns acceleration vector for a point {x,y}
+function gravAccel(x, y) {
+  let ax=0, ay=0;
+
+  // Sun — always at (CX, CY)
+  {
+    const dx = CX-x, dy = CY-y;
+    const d2 = dx*dx + dy*dy;
+    const d  = Math.sqrt(d2);
+    const f  = G * SUN_MASS / d2;        // a = GM/r²
+    ax += f * dx/d;
+    ay += f * dy/d;
+  }
+
+  // Planets — mass scales with radius²
+  for (const p of planets) {
+    const dx = p.x-x, dy = p.y-y;
+    const d2 = Math.max(dx*dx + dy*dy, 400); // avoid singularity
+    const d  = Math.sqrt(d2);
+    const f  = G * p.mass / d2;
+    ax += f * dx/d;
+    ay += f * dy/d;
+  }
+
+  return {ax, ay};
+}
+
+// ── Trajectory preview ────────────────────────────────────────────────────────
+// Simple Euler — fast enough for preview, matches real integration closely
+function simPath(sx, sy, vx, vy, steps=200) {
+  const DT   = 1/60;
+  const path = [{x:sx, y:sy}];
+  let x=sx, y=sy, pvx=vx, pvy=vy;
+  for (let i=0; i<steps; i++) {
+    const {ax,ay} = gravAccel(x, y);
+    pvx += ax*DT; pvy += ay*DT;
+    x   += pvx*DT; y   += pvy*DT;
+    path.push({x,y});
+    if (Math.hypot(x-CX, y-CY) < SUN_KILL_R) break;
+    let hit=false;
+    for (const p of planets) if (Math.hypot(x-p.x, y-p.y) < p.radius*1.3) { hit=true; break; }
+    if (hit || Math.abs(x-CX)>W || Math.abs(y-CY)>H) break;
+  }
+  return path;
+}
+
+// ── Update probes ─────────────────────────────────────────────────────────────
+function updateProbes(dt) {
+  for (const probe of probes) {
+    if (probe.dead) { if (probe.trail.length) probe.trail.shift(); continue; }
+
+    probe.trail.push({x:probe.x, y:probe.y});
+    if (probe.trail.length > TRAIL_MAX) probe.trail.shift();
+
+    // Verlet integration — stable and accurate
+    const {ax,ay} = gravAccel(probe.x, probe.y);
+    probe.vx += ax*dt;
+    probe.vy += ay*dt;
+    probe.x  += probe.vx*dt;
+    probe.y  += probe.vy*dt;
+
+    // Kill: sun
+    if (Math.hypot(probe.x-CX, probe.y-CY) < SUN_KILL_R) {
+      probe.dead = true;
+      burst(probe.x, probe.y, '#FF8800', 20, 5);
+      ring(probe.x, probe.y, '#FF8800', 60);
+      checkOver(); continue;
+    }
+
+    // Kill: planet crash
+    let crashed = false;
+    for (const p of planets) {
+      if (Math.hypot(probe.x-p.x, probe.y-p.y) < p.radius*1.3) {
+        probe.dead = true;
+        burst(probe.x, probe.y, p.color, 16, 4);
+        ring(probe.x, probe.y, p.color, 50);
+        crashed = true; break;
+      }
+    }
+    if (crashed) { checkOver(); continue; }
+
+    // Kill: far off screen
+    if (Math.abs(probe.x-CX) > W*0.9 || Math.abs(probe.y-CY) > H*0.9) {
+      probe.dead = true; checkOver(); continue;
+    }
+
+    // Collect resources
+    for (const r of resources) {
+      if (r.collected) continue;
+      if (Math.hypot(probe.x-r.x, probe.y-r.y) < COLLECT_R) {
+        r.collected = true;
+        combo++;
+        clearTimeout(comboTimeout);
+        comboTimeout = setTimeout(resetCombo, 2200);
+        const pts = r.value * combo;
+        score += pts;
+        if (score>best) { best=score; bestEl.textContent=best; localStorage.setItem('oh_best',best); }
+        scoreEl.textContent = score;
+        burst(r.x, r.y, RES_COLORS[r.type], 18, 5);
+        ring(r.x, r.y, RES_COLORS[r.type], 70);
+        floatText(r.x, r.y, `+${pts}`);
+        showCombo();
+        if (resources.every(x=>x.collected)) setTimeout(nextWave, 1400);
+      }
+    }
+  }
+}
+
+// ── Combo ─────────────────────────────────────────────────────────────────────
+function resetCombo() { combo=0; comboBanner.style.opacity='0'; }
+function showCombo() {
+  if (combo < 2) return;
+  comboBanner.textContent = `×${combo} COMBO`;
+  comboBanner.style.fontSize = clamp(20+combo*5, 22, 60)+'px';
+  comboBanner.style.color = combo>=5?'#FF4488': combo>=3?'#FFD700':'#00FFCC';
+  comboBanner.style.opacity = '1';
+}
+
+// ── Game flow ─────────────────────────────────────────────────────────────────
+function checkOver() {
+  if (gameOverPending) return;
+  const alive = probes.filter(p=>!p.dead).length;
+  if (alive===0 && probesLeft===0) {
+    gameOverPending = true;
+    setTimeout(showGameOver, 1300);
+  }
+}
+
+function showGameOver() {
+  gameActive = false;
+  ovTitle.textContent  = score>0 ? 'MISSION\nCOMPLETE' : 'MISSION\nFAILED';
+  ovSub.innerHTML      = `SCORE<br><span style="font-family:'Orbitron',monospace;font-size:clamp(32px,9vw,64px);font-weight:900;color:var(--gold);text-shadow:0 0 20px rgba(255,215,0,0.7)">${score}</span><br><span style="color:#667;font-size:12px;letter-spacing:2px">BEST ${best}</span>`;
+  startBtn.textContent = 'RETRY MISSION';
+  overlay.classList.remove('hidden');
+}
+
+function nextWave() {
+  wave++;
+  waveLabel.textContent = `WAVE ${wave}`;
+  probesLeft = 6 + Math.floor(wave/3);
+  probes=[]; combo=0;
+  makePlanets(wave);
+  makeResources(wave);
+  updatePips();
+  ring(CX, CY, '#FFD700', Math.min(W,H)*0.5);
+  floatText(CX, CY-90, `WAVE ${wave}!`);
+}
+
+function startGame() {
+  score=0; wave=1; combo=0; gameOverPending=false;
+  probes=[]; particles=[]; pulses=[]; floats=[];
+  best = parseInt(localStorage.getItem('oh_best')||'0');
+  bestEl.textContent = best;
+  scoreEl.textContent = '0';
+  waveLabel.textContent = 'WAVE 1';
+  probesLeft = 6;
+  overlay.classList.add('hidden');
+  makePlanets(1);
+  makeResources(1);
+  updatePips();
+  gameActive = true;
+}
+
+function updatePips() {
+  pipEl.innerHTML = '';
+  const total = 6 + Math.floor(wave/3);
+  for (let i=0; i<total; i++) {
+    const d = document.createElement('div');
+    d.className = 'pip' + (i >= probesLeft ? ' used' : '');
+    pipEl.appendChild(d);
+  }
+}
+
+// ── Particles / effects ───────────────────────────────────────────────────────
+function burst(x,y,color,n=12,spd=3) {
+  for (let i=0;i<n;i++) {
+    const a = (Math.PI*2/n)*i + rand(-0.3,0.3);
+    const s = rand(spd*0.5, spd*1.5);
+    particles.push({x,y, vx:Math.cos(a)*s, vy:Math.sin(a)*s,
+      life:1, decay:rand(0.018,0.04), r:rand(2,5), color});
+  }
+}
+function ring(x,y,color,maxR=60) { pulses.push({x,y,r:0,maxR,color,life:1}); }
+function floatText(x,y,text) { floats.push({x,y,text,life:1,vy:-1.3}); }
+
+// ── Draw ──────────────────────────────────────────────────────────────────────
+function drawBg(t) {
+  ctx.fillStyle='#030510'; ctx.fillRect(0,0,W,H);
+  // grid
+  ctx.strokeStyle='rgba(255,255,255,0.025)'; ctx.lineWidth=0.5;
+  for (let x=0;x<W;x+=60) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for (let y=0;y<H;y+=60) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+  // stars
+  for (const s of stars) {
+    s.tw += s.spd;
+    const a = s.b*(0.6+0.4*Math.sin(s.tw));
+    ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
+    ctx.fillStyle=`rgba(180,200,255,${a})`; ctx.fill();
+  }
+}
+
+function drawSun(t) {
+  const f = 0.97+0.03*Math.sin(t*3.7);
+  // outer glow
+  const g1=ctx.createRadialGradient(CX,CY,0,CX,CY,SUN_RADIUS*5);
+  g1.addColorStop(0,'rgba(255,180,0,0.20)');
+  g1.addColorStop(0.5,'rgba(255,100,0,0.07)');
+  g1.addColorStop(1,'transparent');
+  ctx.beginPath(); ctx.arc(CX,CY,SUN_RADIUS*5*f,0,Math.PI*2);
+  ctx.fillStyle=g1; ctx.fill();
+  // body
+  const g2=ctx.createRadialGradient(CX-5,CY-5,0,CX,CY,SUN_RADIUS*f);
+  g2.addColorStop(0,'#FFFAD0'); g2.addColorStop(0.4,'#FFB347');
+  g2.addColorStop(0.8,'#FF6B00'); g2.addColorStop(1,'#CC3300');
+  ctx.beginPath(); ctx.arc(CX,CY,SUN_RADIUS*f,0,Math.PI*2);
+  ctx.fillStyle=g2; ctx.fill();
+  // corona
+  ctx.save(); ctx.translate(CX,CY);
+  for (let i=0;i<8;i++) {
+    ctx.rotate(Math.PI/4+t*0.3);
+    ctx.beginPath(); ctx.moveTo(0,0);
+    const sl=SUN_RADIUS*(1.5+0.3*Math.sin(t*2+i));
+    ctx.lineTo(sl*0.14,sl); ctx.lineTo(-sl*0.14,sl); ctx.closePath();
+    ctx.fillStyle='rgba(255,150,0,0.11)'; ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawPlanets() {
+  for (const p of planets) {
+    p.angle += p.speed;
+    p.x = CX + Math.cos(p.angle)*p.orb;
+    p.y = CY + Math.sin(p.angle)*p.orb;
+    // orbit ring
+    ctx.beginPath(); ctx.arc(CX,CY,p.orb,0,Math.PI*2);
+    ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=0.5; ctx.stroke();
+    // halo
+    const h=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.radius*2.8);
+    h.addColorStop(0,p.color+'66'); h.addColorStop(1,'transparent');
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.radius*2.8,0,Math.PI*2);
+    ctx.fillStyle=h; ctx.fill();
+    // body
+    const b=ctx.createRadialGradient(p.x-p.radius*0.3,p.y-p.radius*0.3,0,p.x,p.y,p.radius);
+    b.addColorStop(0,'#fff4'); b.addColorStop(0.4,p.color); b.addColorStop(1,p.glow);
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.radius,0,Math.PI*2);
+    ctx.fillStyle=b; ctx.fill();
+    // atmosphere ring
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.radius+2,0,Math.PI*2);
+    ctx.strokeStyle=p.color+'55'; ctx.lineWidth=2; ctx.stroke();
+  }
+}
+
+function drawResources(t) {
+  for (const r of resources) {
+    if (r.collected) continue;
+    const p = planets[r.planetIdx];
+    r.orbitAng += 0.009 * (r.orbitDist>30?1:-1);
+    r.x = p.x + Math.cos(r.orbitAng)*r.orbitDist;
+    r.y = p.y + Math.sin(r.orbitAng)*r.orbitDist;
+    r.pulse += 0.08;
+    const s  = 0.85+0.15*Math.sin(r.pulse);
+    const c  = RES_COLORS[r.type];
+    const sz = 9*s;
+    // glow
+    const rg=ctx.createRadialGradient(r.x,r.y,0,r.x,r.y,sz*2);
+    rg.addColorStop(0,c+'66'); rg.addColorStop(1,'transparent');
+    ctx.beginPath(); ctx.arc(r.x,r.y,sz*2,0,Math.PI*2);
+    ctx.fillStyle=rg; ctx.fill();
+    // glyph
+    ctx.save(); ctx.translate(r.x,r.y); ctx.rotate(r.pulse*0.5);
+    ctx.font=`bold ${Math.round(sz*1.8)}px Rajdhani`;
+    ctx.fillStyle=c; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.shadowColor=c; ctx.shadowBlur=10;
+    ctx.fillText(RES_GLYPHS[r.type],0,0);
+    ctx.restore();
+  }
+}
+
+function drawProbes() {
+  for (const probe of probes) {
+    if (probe.dead && !probe.trail.length) continue;
+    // trail
+    for (let i=1;i<probe.trail.length;i++) {
+      const a=(i/probe.trail.length)*0.7;
+      ctx.beginPath();
+      ctx.moveTo(probe.trail[i-1].x,probe.trail[i-1].y);
+      ctx.lineTo(probe.trail[i].x,probe.trail[i].y);
+      ctx.strokeStyle=`rgba(0,255,200,${a})`;
+      ctx.lineWidth=(i/probe.trail.length)*2; ctx.stroke();
+    }
+    if (probe.dead) continue;
+    // body
+    ctx.save(); ctx.translate(probe.x,probe.y);
+    ctx.rotate(Math.atan2(probe.vy,probe.vx));
+    const pg=ctx.createRadialGradient(0,0,0,0,0,10);
+    pg.addColorStop(0,'rgba(0,255,200,0.45)'); pg.addColorStop(1,'transparent');
+    ctx.beginPath(); ctx.arc(0,0,10,0,Math.PI*2); ctx.fillStyle=pg; ctx.fill();
+    ctx.beginPath(); ctx.moveTo(8,0); ctx.lineTo(-5,4); ctx.lineTo(-5,-4); ctx.closePath();
+    ctx.fillStyle='#00FFCC'; ctx.shadowColor='#00FFCC'; ctx.shadowBlur=8; ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawAimLine() {
+  if (!dragging||!dragStart||!dragNow) return;
+  const dx=dragStart.x-dragNow.x, dy=dragStart.y-dragNow.y;
+  const mag=Math.min(Math.hypot(dx,dy), MAX_DRAG);
+  if (mag<6) return;
+
+  const frac=mag/MAX_DRAG;
+  const spd=frac*MAX_SPEED;
+  const vx=(dx/mag)*spd, vy=(dy/mag)*spd;
+
+  // preview path
+  const path=simPath(dragStart.x, dragStart.y, vx, vy);
+  ctx.save(); ctx.setLineDash([4,7]); ctx.lineWidth=1.5;
+  for (let i=1;i<path.length;i++) {
+    ctx.beginPath();
+    ctx.moveTo(path[i-1].x,path[i-1].y);
+    ctx.lineTo(path[i].x,path[i].y);
+    ctx.strokeStyle=`rgba(0,255,200,${(i/path.length)*0.55})`;
+    ctx.stroke();
+  }
+  ctx.setLineDash([]); ctx.restore();
+
+  // pull line
+  const nx=dx/mag, ny=dy/mag;
+  ctx.beginPath();
+  ctx.moveTo(dragStart.x,dragStart.y);
+  ctx.lineTo(dragStart.x+nx*mag*0.5,dragStart.y+ny*mag*0.5);
+  ctx.strokeStyle=`rgba(255,80,120,${0.4+frac*0.5})`;
+  ctx.lineWidth=2+frac*3; ctx.stroke();
+
+  // power ring
+  ctx.beginPath(); ctx.arc(dragStart.x,dragStart.y,8+frac*14,0,Math.PI*2);
+  ctx.strokeStyle=`rgba(0,255,200,${0.3+frac*0.5})`; ctx.lineWidth=1.5; ctx.stroke();
+
+  // drag dot
+  ctx.beginPath(); ctx.arc(dragNow.x,dragNow.y,5,0,Math.PI*2);
+  ctx.fillStyle='rgba(255,80,120,0.8)'; ctx.fill();
+}
+
+function drawParticles() {
+  for (let i=particles.length-1;i>=0;i--) {
+    const p=particles[i];
+    p.x+=p.vx; p.y+=p.vy; p.vx*=0.96; p.vy*=0.96; p.life-=p.decay;
+    if (p.life<=0) { particles.splice(i,1); continue; }
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.r*p.life,0,Math.PI*2);
+    ctx.fillStyle=p.color+(Math.floor(p.life*255).toString(16).padStart(2,'0'));
+    ctx.fill();
+  }
+}
+
+function drawPulses() {
+  for (let i=pulses.length-1;i>=0;i--) {
+    const p=pulses[i];
+    p.r+=3.5; p.life=1-p.r/p.maxR;
+    if (p.life<=0) { pulses.splice(i,1); continue; }
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+    ctx.strokeStyle=p.color+(Math.floor(p.life*180).toString(16).padStart(2,'0'));
+    ctx.lineWidth=2*p.life; ctx.stroke();
+  }
+}
+
+function drawFloats() {
+  for (let i=floats.length-1;i>=0;i--) {
+    const f=floats[i];
+    f.y+=f.vy; f.life-=0.014;
+    if (f.life<=0) { floats.splice(i,1); continue; }
+    ctx.font=`bold ${Math.floor(14+8*(1-f.life))}px Orbitron`;
+    ctx.textAlign='center';
+    ctx.fillStyle=`rgba(255,215,0,${f.life})`;
+    ctx.shadowColor='rgba(255,215,0,0.8)'; ctx.shadowBlur=10;
+    ctx.fillText(f.text,f.x,f.y); ctx.shadowBlur=0;
+  }
+}
+
+// ── Main loop ─────────────────────────────────────────────────────────────────
+function loop(ts) {
+  const dt = Math.min((ts-lastTime)/1000, 0.033); // cap at ~30fps equiv delta
+  lastTime = ts;
+  const t  = ts/1000;
+
+  drawBg(t);
+  drawSun(t);
+  drawPlanets();
+  if (gameActive) {
+    drawResources(t);
+    updateProbes(dt);
+    drawProbes();
+    drawAimLine();
+  }
+  drawParticles();
+  drawPulses();
+  drawFloats();
+
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(ts => { lastTime=ts; loop(ts); });
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+function evPos(e) {
+  const r=canvas.getBoundingClientRect();
+  const src=e.touches?e.touches[0]:e;
+  return {x:src.clientX-r.left, y:src.clientY-r.top};
+}
+
+function onDown(e) {
+  if (!gameActive||probesLeft<=0) return;
+  e.preventDefault();
+  dragging=true; dragStart=evPos(e); dragNow={...dragStart};
+}
+function onMove(e) {
+  if (!dragging) return; e.preventDefault(); dragNow=evPos(e);
+}
+function onUp(e) {
+  if (!dragging) return; e.preventDefault(); dragging=false;
+  const dx=dragStart.x-dragNow.x, dy=dragStart.y-dragNow.y;
+  const mag=Math.min(Math.hypot(dx,dy),MAX_DRAG);
+  if (mag<8) return;
+  const spd=(mag/MAX_DRAG)*MAX_SPEED;
+  probes.push({
+    x:dragStart.x, y:dragStart.y,
+    vx:(dx/mag)*spd, vy:(dy/mag)*spd,
+    trail:[], dead:false
+  });
+  probesLeft--;
+  updatePips();
+}
+
+canvas.addEventListener('mousedown', onDown);
+canvas.addEventListener('mousemove', onMove);
+canvas.addEventListener('mouseup',   onUp);
+canvas.addEventListener('touchstart',onDown,{passive:false});
+canvas.addEventListener('touchmove', onMove,{passive:false});
+canvas.addEventListener('touchend',  onUp,  {passive:false});
+
+document.addEventListener('keydown', e=>{
+  if (!gameActive||probesLeft<=0) return;
+  if (e.code==='Space') {
+    e.preventDefault();
+    const ang=rand(Math.PI*0.9, Math.PI*1.5);
+    const spd=rand(80,160);
+    probes.push({
+      x:CX+rand(-20,20), y:CY+Math.min(W,H)*0.35,
+      vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd,
+      trail:[], dead:false
+    });
+    probesLeft--; updatePips();
+  }
+});
+
+startBtn.addEventListener('click', startGame);
+
+// menu planet backdrop
+makePlanets(1);
+</script>
+</body>
+</html>

@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>PIPE DREAM</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #f5f0e8;
+  --panel: #ede8de;
+  --rust: #c0392b;
+  --copper: #b5651d;
+  --pipe: #8b7355;
+  --pipe-light: #d4a96a;
+  --water: #2980b9;
+  --water-glow: #74b9ff;
+  --ink: #1a1209;
+  --muted: #8c7b6b;
+  --green: #27ae60;
+  --cell: 68px;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; touch-action:none; user-select:none; }
+
+body {
+  background: var(--bg);
+  width:100vw; height:100vh;
+  overflow:hidden;
+  font-family:'DM Mono', monospace;
+  display:flex; flex-direction:column;
+  align-items:center;
+}
+
+/* Texture */
+body::before {
+  content:'';
+  position:fixed; inset:0;
+  background-image: url("data:image/svg+xml,%3Csvg width='4' height='4' viewBox='0 0 4 4' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 3h1v1H1V3zm2-2h1v1H3V1z' fill='%23000' fill-opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events:none; z-index:0;
+}
+
+#top-bar {
+  position:relative; z-index:10;
+  width:100%; max-width:520px;
+  padding:14px 20px 10px;
+  display:flex; justify-content:space-between; align-items:center;
+  border-bottom: 2px solid rgba(0,0,0,.06);
+}
+
+h1 {
+  font-family:'Syne', sans-serif;
+  font-size:1.4rem; font-weight:800;
+  color:var(--ink);
+  letter-spacing:4px;
+  text-transform:uppercase;
+}
+
+.top-right { text-align:right; }
+.score-lbl { font-size:.45rem; color:var(--muted); letter-spacing:3px; text-transform:uppercase; }
+.score-num {
+  font-family:'Syne', sans-serif;
+  font-size:1.8rem; font-weight:700;
+  color:var(--copper);
+  line-height:1;
+}
+
+#timer-bar-wrap {
+  width:100%; max-width:520px;
+  height:5px;
+  background:rgba(0,0,0,.06);
+  position:relative; z-index:10;
+}
+#timer-bar {
+  height:100%;
+  background: linear-gradient(90deg, var(--water), var(--water-glow));
+  width:100%;
+  transition:width .1s linear;
+}
+
+#game-area {
+  position:relative; z-index:5;
+  flex:1;
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  padding:10px;
+  gap:10px;
+}
+
+#grid-container {
+  position:relative;
+  border:3px solid var(--pipe);
+  border-radius:4px;
+  background:var(--panel);
+  box-shadow: 4px 4px 0 var(--pipe), inset 0 0 0 1px rgba(255,255,255,.5);
+  overflow:hidden;
+}
+
+canvas#grid-canvas {
+  display:block;
+}
+
+.hint-row {
+  display:flex; gap:12px; align-items:center;
+  font-size:.55rem; color:var(--muted);
+  letter-spacing:2px;
+}
+.hint-pip { width:8px; height:8px; border-radius:50%; background:var(--copper); }
+
+/* Screens */
+.screen {
+  position:fixed; inset:0;
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  gap:20px; z-index:100;
+  padding:30px;
+}
+.screen.hidden { display:none; }
+
+#start-screen {
+  background: var(--bg);
+}
+#over-screen {
+  background: rgba(245,240,232,.97);
+}
+
+.screen h2 {
+  font-family:'Syne', sans-serif;
+  font-size:2.8rem; font-weight:800;
+  color:var(--ink);
+  letter-spacing:3px;
+  text-align:center;
+  line-height:1.1;
+}
+
+.screen p {
+  color:var(--muted);
+  font-size:.65rem; letter-spacing:1px;
+  text-align:center; max-width:280px;
+  line-height:2;
+}
+
+.btn {
+  background:var(--ink);
+  border:none;
+  color:var(--bg);
+  font-family:'Syne', sans-serif;
+  font-size:1rem; font-weight:700;
+  letter-spacing:4px;
+  padding:14px 48px;
+  cursor:pointer;
+  border-radius:2px;
+  transition:all .15s;
+}
+.btn:active { transform:scale(.97); opacity:.85; }
+.btn.outline {
+  background:none;
+  border:2px solid var(--ink);
+  color:var(--ink);
+}
+
+.pipe-demo {
+  display:flex; gap:0;
+  padding:12px 16px;
+  background:var(--panel);
+  border:2px solid var(--pipe);
+  border-radius:3px;
+  box-shadow:3px 3px 0 var(--pipe);
+}
+
+.big-score-end {
+  font-family:'Syne', sans-serif;
+  font-size:4rem; font-weight:800;
+  color:var(--copper);
+  line-height:1;
+}
+
+.end-row {
+  display:flex; justify-content:space-between;
+  width:100%; max-width:260px;
+  padding:5px 0;
+  border-bottom:1px solid rgba(0,0,0,.06);
+  font-size:.6rem; color:var(--muted);
+  letter-spacing:1px;
+}
+.end-row span:last-child { color:var(--ink); font-weight:500; }
+
+.inst-card {
+  background:var(--panel);
+  border:1.5px solid rgba(0,0,0,.1);
+  border-radius:4px;
+  padding:12px 16px;
+  width:100%; max-width:300px;
+}
+.inst-title { font-size:.45rem; color:var(--muted); letter-spacing:3px; margin-bottom:8px; text-transform:uppercase; }
+.inst-r { display:flex; gap:10px; align-items:flex-start; padding:4px 0; }
+.inst-icon { font-size:1rem; width:22px; }
+.inst-txt { font-size:.58rem; color:var(--muted); letter-spacing:.5px; line-height:1.7; }
+</style>
+</head>
+<body>
+
+<div id="top-bar">
+  <h1>PIPE DREAM</h1>
+  <div class="top-right">
+    <div class="score-lbl">SCORE</div>
+    <div class="score-num" id="score-disp">0</div>
+  </div>
+</div>
+
+<div id="timer-bar-wrap"><div id="timer-bar"></div></div>
+
+<div id="game-area">
+  <div id="grid-container">
+    <canvas id="grid-canvas"></canvas>
+  </div>
+  <div class="hint-row">
+    <div class="hint-pip"></div>
+    <span>TAP PIPES TO ROTATE · CONNECT SOURCE TO DRAIN</span>
+    <div class="hint-pip"></div>
+  </div>
+</div>
+
+<!-- Start -->
+<div class="screen" id="start-screen">
+  <h2>PIPE<br>DREAM</h2>
+  <p>Rotate the pipe segments to connect the water source to the drain before the timer runs out.</p>
+  <div class="inst-card">
+    <div class="inst-title">How To Play</div>
+    <div class="inst-r"><div class="inst-icon">🔧</div><div class="inst-txt">Tap any pipe to rotate it 90° clockwise</div></div>
+    <div class="inst-r"><div class="inst-icon">💧</div><div class="inst-txt">When the path is complete, water flows automatically</div></div>
+    <div class="inst-r"><div class="inst-icon">⏱️</div><div class="inst-txt">Complete it before the timer empties. Each level gets harder.</div></div>
+    <div class="inst-r"><div class="inst-icon">⭐</div><div class="inst-txt">Longer pipe chains and faster completions earn more points</div></div>
+  </div>
+  <button class="btn" id="start-btn">TURN THE VALVE</button>
+</div>
+
+<!-- Over -->
+<div class="screen hidden" id="over-screen">
+  <h2 id="over-title">FLOODED</h2>
+  <div class="big-score-end" id="final-score-disp">0</div>
+  <div style="width:100%;max-width:260px">
+    <div class="end-row"><span>LEVEL REACHED</span><span id="end-level">1</span></div>
+    <div class="end-row"><span>PIPES ROTATED</span><span id="end-rotates">0</span></div>
+    <div class="end-row"><span>BEST CHAIN</span><span id="end-chain">0</span></div>
+  </div>
+  <button class="btn" id="retry-btn">REPLAY</button>
+</div>
+
+<script>
+// ── CONFIG ─────────────────────────────────────────────
+const COLS = 6, ROWS = 7;
+const CELL = 62;
+const canvas = document.getElementById('grid-canvas');
+const ctx = canvas.getContext('2d');
+canvas.width = COLS * CELL;
+canvas.height = ROWS * CELL;
+
+// Pipe types: connections encoded as [N,E,S,W] booleans
+// Types: straight (─), elbow (╗), tee (┤), cross (+)
+const TYPES = {
+  straight: { base: [[0,1,0,1],[1,0,1,0]], name:'straight' },
+  elbow:    { base: [[0,1,1,0],[0,0,1,1],[1,0,0,1],[1,1,0,0]], name:'elbow' },
+  tee:      { base: [[1,1,0,1],[1,1,1,0],[0,1,1,1],[1,0,1,1]], name:'tee' },
+  // cross:    { base: [[1,1,1,1]], name:'cross' },
+};
+
+// Directions: 0=N,1=E,2=S,3=W
+const DIR_OFFSETS = [{r:-1,c:0},{r:0,c:1},{r:1,c:0},{r:0,c:-1}];
+const OPPOSITE = [2,3,0,1];
+
+// ── STATE ──────────────────────────────────────────────
+const G = {
+  active: false,
+  score: 0,
+  level: 1,
+  grid: [],         // {type, rotation, flowing, flowProgress, flowDir}
+  source: {r:0,c:0},
+  drain: {r:0,c:0},
+  flowing: false,
+  flowPath: [],
+  flowProgress: 0,  // cells filled
+  timerMax: 45,
+  timeLeft: 45,
+  timerInterval: null,
+  totalRotates: 0,
+  bestChain: 0,
+  solved: false,
+  animFrame: 0,
+  particles: [],
+};
+
+function cellConnections(cell) {
+  const type = TYPES[cell.type];
+  return type.base[cell.rotation % type.base.length];
+}
+
+function connects(r, c, dir) {
+  const cell = G.grid[r]?.[c];
+  if (!cell) return false;
+  return cellConnections(cell)[dir];
+}
+
+function neighborsConnect(r1,c1,r2,c2) {
+  // dir from 1→2
+  const dr = r2-r1, dc = c2-c1;
+  let dir1 = -1, dir2 = -1;
+  if (dr===-1) { dir1=0; dir2=2; }
+  else if (dc===1) { dir1=1; dir2=3; }
+  else if (dr===1) { dir1=2; dir2=0; }
+  else if (dc===-1) { dir1=3; dir2=1; }
+  if (dir1<0) return false;
+  return connects(r1,c1,dir1) && connects(r2,c2,dir2);
+}
+
+// BFS to find connected path from source to drain
+function findPath() {
+  const {r:sr,c:sc} = G.source;
+  const {r:dr,c:dc} = G.drain;
+  const visited = Array.from({length:ROWS},()=>Array(COLS).fill(false));
+  const queue = [[sr,sc,[[sr,sc]]]];
+  visited[sr][sc] = true;
+  while (queue.length) {
+    const [r,c,path] = queue.shift();
+    if (r===dr && c===dc) return path;
+    for (let d=0;d<4;d++) {
+      const nr=r+DIR_OFFSETS[d].r, nc=c+DIR_OFFSETS[d].c;
+      if (nr<0||nr>=ROWS||nc<0||nc>=COLS) continue;
+      if (visited[nr][nc]) continue;
+      if (!connects(r,c,d)) continue;
+      if (!connects(nr,nc,OPPOSITE[d])) continue;
+      visited[nr][nc]=true;
+      queue.push([nr,nc,[...path,[nr,nc]]]);
+    }
+  }
+  return null;
+}
+
+// ── LEVEL GENERATION ───────────────────────────────────
+function generateLevel() {
+  G.grid = Array.from({length:ROWS},()=>Array.from({length:COLS},()=>randCell()));
+
+  // Place source top-left area, drain bottom-right area
+  G.source = {r:0, c:0};
+  G.drain  = {r:ROWS-1, c:COLS-1};
+
+  // Carve a valid path first, then shuffle pipe rotations
+  const path = carvePath();
+  // Now shuffle non-path cell rotations
+  for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++) {
+    const onPath = path.some(([pr,pc])=>pr===r&&pc===c);
+    if (!onPath) {
+      G.grid[r][c].rotation = Math.floor(Math.random() * TYPES[G.grid[r][c].type].base.length);
+    }
+  }
+  // Shuffle path cells (player must rotate to fix)
+  path.forEach(([r,c]) => {
+    const cell = G.grid[r][c];
+    const maxRot = TYPES[cell.type].base.length;
+    const shuffles = 1 + Math.floor(Math.random() * (maxRot-1));
+    cell.rotation = (cell.rotation + shuffles) % maxRot;
+  });
+}
+
+function carvePath() {
+  const {r:sr,c:sc} = G.source;
+  const {r:dr,c:dc} = G.drain;
+  // Random walk from source to drain
+  const path = [[sr,sc]];
+  let r=sr, c=sc;
+  const visited = Array.from({length:ROWS},()=>Array(COLS).fill(false));
+  visited[sr][sc]=true;
+
+  const maxSteps = ROWS*COLS*2;
+  let steps=0;
+  while ((r!==dr||c!==dc) && steps++<maxSteps) {
+    // Bias toward drain
+    const dirs = [0,1,2,3].sort(()=>Math.random()-0.5);
+    let moved=false;
+    for (const d of dirs) {
+      const nr=r+DIR_OFFSETS[d].r, nc=c+DIR_OFFSETS[d].c;
+      if (nr<0||nr>=ROWS||nc<0||nc>=COLS||visited[nr][nc]) continue;
+      // Bias toward drain
+      const dBefore = Math.abs(r-dr)+Math.abs(c-dc);
+      const dAfter  = Math.abs(nr-dr)+Math.abs(nc-dc);
+      if (dAfter > dBefore + 1 && Math.random() > 0.3) continue;
+      // Set pipe connections
+      setPipeConnection(r,c,d);
+      setPipeConnection(nr,nc,OPPOSITE[d]);
+      visited[nr][nc]=true;
+      path.push([nr,nc]);
+      r=nr; c=nc;
+      moved=true;
+      break;
+    }
+    if (!moved) break;
+  }
+  return path;
+}
+
+function setPipeConnection(r, c, dir) {
+  const cell = G.grid[r][c];
+  // Find a rotation that includes this direction
+  const type = TYPES[cell.type];
+  for (let rot=0;rot<type.base.length;rot++) {
+    if (type.base[rot][dir]) {
+      cell.rotation = rot;
+      return;
+    }
+  }
+}
+
+function randCell() {
+  const types = Object.keys(TYPES);
+  // Weighted: more elbows and straights
+  const w = ['straight','straight','elbow','elbow','elbow','tee'];
+  const type = w[Math.floor(Math.random()*w.length)];
+  const rot = Math.floor(Math.random() * TYPES[type].base.length);
+  return { type, rotation:rot, flowing:false, flowProgress:0, rotAnim:0 };
+}
+
+// ── DRAWING ────────────────────────────────────────────
+const PIPE_W = 14;
+const COLORS = {
+  bg: '#ede8de',
+  cell: '#e8e3d8',
+  cellHover: '#ddd8ca',
+  pipe: '#8b7355',
+  pipeDark: '#6b5a3e',
+  pipeLight: '#b09070',
+  water: '#2980b9',
+  waterLight: '#5dade2',
+  source: '#27ae60',
+  drain: '#c0392b',
+};
+
+let hoverCell = {r:-1,c:-1};
+
+function drawCell(r, c) {
+  const x = c * CELL, y = r * CELL;
+  const cell = G.grid[r][c];
+  const isSource = G.source.r===r && G.source.c===c;
+  const isDrain  = G.drain.r===r  && G.drain.c===c;
+  const isHover  = hoverCell.r===r && hoverCell.c===c;
+  const conn = cellConnections(cell);
+
+  const cx = x + CELL/2, cy = y + CELL/2;
+
+  // Cell bg
+  ctx.fillStyle = isHover ? COLORS.cellHover : COLORS.cell;
+  ctx.fillRect(x+1, y+1, CELL-2, CELL-2);
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(0,0,0,.07)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x+0.5, y+0.5, CELL-1, CELL-1);
+
+  // Draw pipe segments
+  ctx.lineCap = 'round';
+  const dirs = [
+    {d:0, ex:cx, ey:y,       dx:0, dy:1},
+    {d:1, ex:x+CELL, ey:cy,  dx:-1,dy:0},
+    {d:2, ex:cx, ey:y+CELL,  dx:0, dy:-1},
+    {d:3, ex:x,  ey:cy,      dx:1, dy:0},
+  ];
+
+  // Pipe shadow
+  dirs.forEach(({d, ex, ey, dx, dy}) => {
+    if (!conn[d]) return;
+    ctx.beginPath();
+    ctx.moveTo(cx+1, cy+1);
+    ctx.lineTo(ex+1, ey+1);
+    ctx.strokeStyle = 'rgba(0,0,0,.12)';
+    ctx.lineWidth = PIPE_W + 4;
+    ctx.stroke();
+  });
+
+  // Pipe body
+  dirs.forEach(({d, ex, ey}) => {
+    if (!conn[d]) return;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(ex, ey);
+    ctx.strokeStyle = COLORS.pipe;
+    ctx.lineWidth = PIPE_W;
+    ctx.stroke();
+    // Highlight
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(ex, ey);
+    ctx.strokeStyle = COLORS.pipeLight;
+    ctx.lineWidth = PIPE_W * 0.3;
+    ctx.stroke();
+  });
+
+  // Center cap
+  ctx.beginPath();
+  ctx.arc(cx, cy, PIPE_W/2 + 1, 0, Math.PI*2);
+  ctx.fillStyle = COLORS.pipe;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(cx - 2, cy - 2, PIPE_W * 0.18, 0, Math.PI*2);
+  ctx.fillStyle = COLORS.pipeLight;
+  ctx.fill();
+
+  // Water overlay
+  if (cell.flowing && cell.flowProgress > 0) {
+    const fp = Math.min(cell.flowProgress, 1);
+    dirs.forEach(({d, ex, ey}) => {
+      if (!conn[d]) return;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + (ex-cx)*fp, cy + (ey-cy)*fp);
+      ctx.strokeStyle = COLORS.water;
+      ctx.lineWidth = PIPE_W * 0.55;
+      ctx.stroke();
+      // Water shimmer
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + (ex-cx)*fp, cy + (ey-cy)*fp);
+      ctx.strokeStyle = COLORS.waterLight;
+      ctx.lineWidth = PIPE_W * 0.2;
+      ctx.stroke();
+    });
+    // Center water
+    ctx.beginPath();
+    ctx.arc(cx, cy, PIPE_W * 0.28 * fp, 0, Math.PI*2);
+    ctx.fillStyle = COLORS.water;
+    ctx.fill();
+  }
+
+  // Source / Drain markers
+  if (isSource || isDrain) {
+    const col = isSource ? COLORS.source : COLORS.drain;
+    ctx.beginPath();
+    ctx.arc(cx, cy, PIPE_W/2 + 4, 0, Math.PI*2);
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 3;
+    ctx.shadowColor = col;
+    ctx.shadowBlur = 12;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    ctx.font = `bold ${CELL*0.22}px DM Mono, monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = col;
+    ctx.fillText(isSource ? 'IN' : 'OUT', cx, cy + PIPE_W * 0.8);
+  }
+}
+
+function drawGrid() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = COLORS.bg;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++) drawCell(r,c);
+}
+
+// ── FLOW ANIMATION ─────────────────────────────────────
+let flowAnimInterval = null;
+
+function startFlow(path) {
+  if (G.flowing || G.solved) return;  // prevent double-trigger
+  G.flowing = true;
+  G.flowPath = path;
+  G.bestChain = Math.max(G.bestChain, path.length);
+  let idx = 0;
+
+  flowAnimInterval = setInterval(() => {
+    if (idx >= path.length) {
+      clearInterval(flowAnimInterval);
+      onSolved(path);
+      return;
+    }
+    const [r,c] = path[idx];
+    G.grid[r][c].flowing = true;
+    G.grid[r][c].flowProgress = 0;
+    // Animate fill
+    let prog = 0;
+    const fillInt = setInterval(() => {
+      prog += 0.12;
+      G.grid[r][c].flowProgress = prog;
+      drawGrid();
+      if (prog >= 1) clearInterval(fillInt);
+    }, 20);
+    idx++;
+  }, 120);
+}
+
+function onSolved(path) {
+  G.solved = true;
+  clearInterval(G.timerInterval);
+  const timeBonus = Math.floor(G.timeLeft * 10);
+  const chainBonus = path.length * 50;
+  const levelBonus = G.level * 100;
+  const pts = timeBonus + chainBonus + levelBonus;
+  G.score += pts;
+  document.getElementById('score-disp').textContent = G.score.toLocaleString();
+
+  // Celebration particles
+  for (let i = 0; i < 20; i++) {
+    const [r,c] = path[Math.floor(Math.random()*path.length)];
+    G.particles.push({
+      x: c*CELL + CELL/2, y: r*CELL + CELL/2,
+      vx: (Math.random()-0.5)*3, vy: -1-Math.random()*2,
+      r: 3+Math.random()*4, life:1, decay:.02,
+      color: ['#2980b9','#27ae60','#f39c12','#e74c3c'][Math.floor(Math.random()*4)],
+    });
+  }
+
+  setTimeout(() => nextLevel(), 1200);
+}
+
+function nextLevel() {
+  G.level++;
+  G.timerMax = Math.max(20, 45 - (G.level-1) * 3);
+  G.timeLeft = G.timerMax;
+  G.flowing = false;
+  G.solved = false;
+  G.particles = [];
+  generateLevel();
+  startTimer();
+  drawGrid();
+  updateTimerBar();
+}
+
+// ── TIMER ──────────────────────────────────────────────
+function startTimer() {
+  clearInterval(G.timerInterval);
+  G.timerInterval = setInterval(() => {
+    G.timeLeft -= 0.1;
+    updateTimerBar();
+    if (!G.solved && !G.flowing) {
+      const path = findPath();
+      if (path) startFlow(path);
+    }
+    if (G.timeLeft <= 0) {
+      clearInterval(G.timerInterval);
+      if (!G.solved) endGame();
+    }
+  }, 100);
+}
+
+function updateTimerBar() {
+  const pct = Math.max(0, G.timeLeft / G.timerMax * 100);
+  document.getElementById('timer-bar').style.width = pct + '%';
+  if (pct < 30) document.getElementById('timer-bar').style.background = 'linear-gradient(90deg,#c0392b,#e74c3c)';
+  else document.getElementById('timer-bar').style.background = 'linear-gradient(90deg,var(--water),var(--water-glow))';
+}
+
+// ── PARTICLES ──────────────────────────────────────────
+function updateParticles() {
+  G.particles.forEach(p => { p.x+=p.vx; p.y+=p.vy; p.vy+=0.05; p.life-=p.decay; });
+  G.particles = G.particles.filter(p=>p.life>0);
+}
+
+function drawParticles() {
+  G.particles.forEach(p => {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r*p.life, 0, Math.PI*2);
+    ctx.fillStyle = p.color+Math.floor(p.life*255).toString(16).padStart(2,'0');
+    ctx.fill();
+  });
+}
+
+// ── INPUT ──────────────────────────────────────────────
+function getCellFromEvent(e) {
+  const rect = canvas.getBoundingClientRect();
+  const t = e.touches ? e.touches[0] : e;
+  const x = t.clientX - rect.left, y = t.clientY - rect.top;
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const c = Math.floor(x * scaleX / CELL);
+  const r = Math.floor(y * scaleY / CELL);
+  if (r>=0&&r<ROWS&&c>=0&&c<COLS) return {r,c};
+  return null;
+}
+
+canvas.addEventListener('click', e => {
+  if (!G.active || G.flowing || G.solved) return;
+  const cell = getCellFromEvent(e);
+  if (!cell) return;
+  const {r,c} = cell;
+  const pipe = G.grid[r][c];
+  pipe.rotation = (pipe.rotation + 1) % TYPES[pipe.type].base.length;
+  G.totalRotates++;
+  // Rotate animation flash
+  pipe.rotAnim = 1;
+  setTimeout(() => { pipe.rotAnim = 0; }, 200);
+  drawGrid();
+  // Check immediately
+  const path = findPath();
+  if (path) startFlow(path);
+});
+
+canvas.addEventListener('mousemove', e => {
+  const cell = getCellFromEvent(e);
+  hoverCell = cell || {r:-1,c:-1};
+  if (G.active && !G.flowing) drawGrid();
+});
+
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (!G.active || G.flowing || G.solved) return;
+  const cell = getCellFromEvent(e);
+  if (!cell) return;
+  const {r,c} = cell;
+  G.grid[r][c].rotation = (G.grid[r][c].rotation + 1) % TYPES[G.grid[r][c].type].base.length;
+  G.totalRotates++;
+  drawGrid();
+  const path = findPath();
+  if (path) startFlow(path);
+}, {passive:false});
+
+// ── GAME FLOW ──────────────────────────────────────────
+function startGame() {
+  G.active = true;
+  G.score = 0;
+  G.level = 1;
+  G.totalRotates = 0;
+  G.bestChain = 0;
+  G.flowing = false;
+  G.solved = false;
+  G.particles = [];
+  G.timerMax = 45;
+  G.timeLeft = 45;
+  document.getElementById('start-screen').classList.add('hidden');
+  document.getElementById('over-screen').classList.add('hidden');
+  generateLevel();
+  startTimer();
+  drawGrid();
+  updateTimerBar();
+  gameLoop();
+}
+
+function endGame() {
+  G.active = false;
+  clearInterval(G.timerInterval);
+  document.getElementById('over-title').textContent = G.level > 3 ? 'WELL DONE!' : 'FLOODED';
+  document.getElementById('final-score-disp').textContent = G.score.toLocaleString();
+  document.getElementById('end-level').textContent = G.level;
+  document.getElementById('end-rotates').textContent = G.totalRotates;
+  document.getElementById('end-chain').textContent = G.bestChain;
+  document.getElementById('over-screen').classList.remove('hidden');
+}
+
+function gameLoop() {
+  if (!G.active) return;
+  updateParticles();
+  if (G.particles.length > 0) drawGrid(), drawParticles();
+  requestAnimationFrame(gameLoop);
+}
+
+document.getElementById('start-btn').addEventListener('click', startGame);
+document.getElementById('retry-btn').addEventListener('click', startGame);
+document.getElementById('score-disp').textContent = '0';
+</script>
+</body>
+</html>

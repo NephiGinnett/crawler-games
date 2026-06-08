@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>VOLTAGE</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+
+:root {
+  --bg: #07070f;
+  --live: #ffe600;
+  --hot: #ff4400;
+  --safe: #00ffaa;
+  --shield: #4fc3f7;
+  --dim: #3a3a55;
+  --text: #ccd6f6;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; touch-action:none; user-select:none; }
+
+body {
+  background: var(--bg);
+  width:100vw; height:100vh;
+  overflow:hidden;
+  font-family:'Share Tech Mono', monospace;
+  display:flex; align-items:center; justify-content:center;
+}
+
+canvas { display:block; touch-action:none; }
+
+/* HUD */
+#hud {
+  position:fixed; top:0; left:0; right:0;
+  padding:14px 20px;
+  display:flex; justify-content:space-between; align-items:flex-start;
+  z-index:10; pointer-events:none;
+}
+.hud-lbl { font-size:.42rem; color:var(--dim); letter-spacing:3px; text-transform:uppercase; }
+.hud-val { font-family:'Orbitron',sans-serif; font-size:2rem; color:var(--live); text-shadow:0 0 12px var(--live); line-height:1; }
+.hud-val.blue { color:var(--shield); text-shadow:0 0 12px var(--shield); }
+#lives-wrap { display:flex; gap:6px; margin-top:4px; justify-content:flex-end; }
+.pip { width:10px; height:10px; border-radius:50%; background:var(--live); box-shadow:0 0 8px var(--live); transition:all .2s; }
+.pip.dead { background:#222; box-shadow:none; }
+
+/* Screens */
+.screen {
+  position:fixed; inset:0;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:18px; z-index:50; padding:28px;
+  background:radial-gradient(ellipse at center, rgba(13,13,26,.98) 0%, rgba(7,7,15,1) 100%);
+}
+.screen.hidden { display:none; }
+.screen h1 {
+  font-family:'Orbitron',sans-serif; font-size:3.5rem; font-weight:900;
+  color:var(--live); text-shadow:0 0 20px var(--live),0 0 50px rgba(255,230,0,.25);
+  letter-spacing:6px;
+}
+.screen p { color:#556; font-size:.65rem; letter-spacing:1.5px; text-align:center; max-width:280px; line-height:2; }
+.btn {
+  background:none; border:2px solid var(--live); color:var(--live);
+  font-family:'Orbitron',sans-serif; font-size:.95rem; font-weight:700;
+  letter-spacing:4px; padding:14px 44px; cursor:pointer;
+  text-shadow:0 0 10px var(--live); box-shadow:0 0 20px rgba(255,230,0,.12);
+  transition:all .15s;
+}
+.btn:active { transform:scale(.96); background:rgba(255,230,0,.08); }
+
+.inst-box {
+  background:rgba(255,230,0,.03); border:1px solid rgba(255,230,0,.12);
+  border-radius:4px; padding:12px 16px; width:100%; max-width:300px;
+}
+.inst-title { font-size:.42rem; color:var(--live); letter-spacing:3px; margin-bottom:8px; }
+.inst-r { display:flex; gap:10px; align-items:center; padding:3px 0; }
+.inst-icon { font-size:1.1rem; width:24px; text-align:center; }
+.inst-txt { font-size:.57rem; color:#556; letter-spacing:1px; line-height:1.7; }
+
+.big-score { font-family:'Orbitron',sans-serif; font-size:4.5rem; font-weight:900; color:var(--live); text-shadow:0 0 30px var(--live); line-height:1; }
+.stat-row { display:flex; justify-content:space-between; width:100%; max-width:280px; padding:5px 0; border-bottom:1px solid rgba(255,255,255,.04); font-size:.58rem; color:#445; }
+.stat-row span:last-child { color:var(--text); }
+
+/* Combo bar */
+#combo-bar-wrap { position:fixed; bottom:0; left:0; right:0; height:4px; background:rgba(255,255,255,.04); z-index:10; }
+#combo-bar { height:100%; width:0%; background:linear-gradient(90deg,var(--safe),var(--live)); box-shadow:0 0 8px var(--live); transition:width .15s; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud">
+  <div>
+    <div class="hud-lbl">SCORE</div>
+    <div class="hud-val" id="hud-score">0</div>
+  </div>
+  <div style="text-align:center">
+    <div class="hud-lbl">WAVE</div>
+    <div class="hud-val blue" id="hud-wave">1</div>
+  </div>
+  <div>
+    <div class="hud-lbl">LIVES</div>
+    <div id="lives-wrap">
+      <div class="pip" id="p0"></div>
+      <div class="pip" id="p1"></div>
+      <div class="pip" id="p2"></div>
+    </div>
+  </div>
+</div>
+
+<div id="combo-bar-wrap"><div id="combo-bar"></div></div>
+
+<!-- Start -->
+<div class="screen" id="scr-start">
+  <h1>VOLTAGE</h1>
+  <p>Lightning is coming from every direction. Tap the side it's coming from to raise your shield and deflect it.</p>
+  <div class="inst-box">
+    <div class="inst-title">HOW TO PLAY</div>
+    <div class="inst-r"><div class="inst-icon">⚡</div><div class="inst-txt">Bolts approach from N / S / E / W — watch the telegraph flash</div></div>
+    <div class="inst-r"><div class="inst-icon">🛡️</div><div class="inst-txt">Tap that side of the screen when the bolt enters the ring to deflect</div></div>
+    <div class="inst-r"><div class="inst-icon">🎵</div><div class="inst-txt">Multiple bolts can come at once. Stay in rhythm — timing is everything</div></div>
+    <div class="inst-r"><div class="inst-icon">🔥</div><div class="inst-txt">Perfect timing = PERFECT. Miss the window = take a hit</div></div>
+  </div>
+  <button class="btn" id="btn-start">POWER ON</button>
+</div>
+
+<!-- Over -->
+<div class="screen hidden" id="scr-over">
+  <h1 id="over-title">FRIED</h1>
+  <div class="big-score" id="over-score">0</div>
+  <div style="width:100%;max-width:280px;margin-top:4px">
+    <div class="stat-row"><span>WAVE</span><span id="st-wave">1</span></div>
+    <div class="stat-row"><span>DEFLECTS</span><span id="st-deflects">0</span></div>
+    <div class="stat-row"><span>BEST STREAK</span><span id="st-streak">0</span></div>
+  </div>
+  <button class="btn" id="btn-retry">REBOOT</button>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H, CX, CY;
+
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  CX = W / 2; CY = H / 2;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ─── CONSTANTS ────────────────────────────────────────
+const DIRS = {
+  N: { angle: -Math.PI/2, label:'N', dx:0,  dy:-1 },
+  S: { angle:  Math.PI/2, label:'S', dx:0,  dy:1  },
+  E: { angle:  0,          label:'E', dx:1,  dy:0  },
+  W: { angle:  Math.PI,    label:'W', dx:-1, dy:0  },
+};
+const DIR_KEYS = ['N','S','E','W'];
+
+// Ring where bolts must be deflected
+const RING_R    = 90;   // player must tap when bolt is inside this
+const SPAWN_R   = () => Math.min(W, H) * 0.56;  // bolt spawn distance
+const BOLT_HIT_R = 30;  // center body radius
+
+// Timing window (fraction of travel where deflect counts)
+const WINDOW_OPEN  = 0.72;  // bolt at 72% travel = window opens
+const WINDOW_CLOSE = 0.95;  // bolt at 95% travel = window closes / hit
+
+// ─── STATE ────────────────────────────────────────────
+let S = {};
+
+function makeState() {
+  return {
+    active: false,
+    score: 0, lives: 3, wave: 1,
+    streak: 0, bestStreak: 0, totalDeflects: 0,
+    bolts: [],          // active incoming bolts
+    shield: { dir: null, showTimer: 0 },
+    popups: [],         // floating text
+    particles: [],
+    frame: 0,
+    spawnTimer: 0,
+    spawnInterval: 120, // frames between spawns
+    shake: 0,
+  };
+}
+
+// ─── BOLT ─────────────────────────────────────────────
+let boltId = 0;
+function spawnBolt(dirKey) {
+  const d = DIRS[dirKey];
+  const sr = SPAWN_R();
+  return {
+    id: boltId++,
+    dir: dirKey,
+    x: CX + d.dx * sr,
+    y: CY + d.dy * sr,
+    progress: 0,       // 0=spawned, 1=center
+    speed: 0.008 + S.wave * 0.0012,
+    deflected: false,
+    hit: false,
+    segments: makeLightning(dirKey, sr),
+    telegraphTimer: 40, // frames of warning flash before bolt actually appears
+    active: false,      // bolt isn't drawn until telegraphTimer done
+    windowFlash: 0,
+  };
+}
+
+function makeLightning(dirKey, sr) {
+  // Build zigzag from spawn point to center, 10 segments
+  const d = DIRS[dirKey];
+  const segs = 10;
+  const arr = [];
+  // Perpendicular axis for jitter
+  const px = d.dy, py = -d.dx;
+  for (let i = 0; i <= segs; i++) {
+    const t = i / segs;
+    const jitter = (i === 0 || i === segs) ? 0 : (Math.random() - 0.5) * 28;
+    arr.push({ t, jx: px * jitter, jy: py * jitter });
+  }
+  return arr;
+}
+
+// ─── SPAWN SCHEDULE ───────────────────────────────────
+function scheduleNextBolt() {
+  // At higher waves, sometimes spawn 2 simultaneously
+  const roll = Math.random();
+  const dirs = [...DIR_KEYS].sort(() => Math.random() - 0.5);
+
+  if (S.wave >= 3 && roll > 0.65) {
+    // Two bolts from different (non-opposite) directions
+    const d1 = dirs[0];
+    const d2 = dirs.find(d => d !== d1 && d !== opposite(d1));
+    S.bolts.push(spawnBolt(d1));
+    if (d2) S.bolts.push(spawnBolt(d2));
+  } else {
+    S.bolts.push(spawnBolt(dirs[0]));
+  }
+  S.spawnTimer = 0;
+}
+
+function opposite(dir) {
+  return { N:'S', S:'N', E:'W', W:'E' }[dir];
+}
+
+// ─── INPUT: which side of screen was tapped ───────────
+function tapDir(clientX, clientY) {
+  const dx = clientX - CX, dy = clientY - CY;
+  const absDx = Math.abs(dx), absDy = Math.abs(dy);
+  if (absDx > absDy) return dx > 0 ? 'E' : 'W';
+  return dy > 0 ? 'S' : 'N';
+}
+
+function onTap(clientX, clientY) {
+  if (!S.active) return;
+  const dir = tapDir(clientX, clientY);
+  S.shield.dir = dir;
+  S.shield.showTimer = 25;
+
+  // Check any bolt in this direction inside the window
+  let hit = false;
+  S.bolts.forEach(b => {
+    if (b.deflected || b.hit || !b.active) return;
+    if (b.dir !== dir) return;
+    if (b.progress >= WINDOW_OPEN && b.progress < WINDOW_CLOSE) {
+      deflectBolt(b);
+      hit = true;
+    }
+  });
+  // Tap in wrong direction or wrong time — no penalty, just visual
+}
+
+function deflectBolt(b) {
+  b.deflected = true;
+  const center = (WINDOW_OPEN + WINDOW_CLOSE) / 2;
+  const accuracy = 1 - Math.abs(b.progress - center) / ((WINDOW_CLOSE - WINDOW_OPEN) / 2);
+  const clamped = Math.max(0, Math.min(1, accuracy));
+
+  S.streak++;
+  S.bestStreak = Math.max(S.streak, S.bestStreak);
+  S.totalDeflects++;
+
+  const base = 80 + S.wave * 15;
+  const mult = Math.min(S.streak, 8);
+  const pts = Math.floor(base * mult * (0.6 + clamped * 0.4));
+  S.score += pts;
+
+  const label = clamped > 0.8 ? 'PERFECT!' : clamped > 0.5 ? 'GREAT' : 'GOOD';
+  const col   = clamped > 0.8 ? '#00ffaa'  : clamped > 0.5 ? '#ffe600' : '#ff9a00';
+
+  const bx = CX + DIRS[b.dir].dx * RING_R * 0.5;
+  const by = CY + DIRS[b.dir].dy * RING_R * 0.5;
+  addPopup(bx, by - 20, label + (mult > 1 ? ` ×${mult}` : ''), col, 1.4);
+  burst(bx, by, col, 14);
+  updateHUD();
+}
+
+// ─── UPDATE ───────────────────────────────────────────
+function update() {
+  if (!S.active) return;
+  S.frame++;
+
+  // Spawn bolts
+  S.spawnTimer++;
+  const interval = Math.max(45, S.spawnInterval - S.wave * 6);
+  if (S.spawnTimer >= interval) scheduleNextBolt();
+
+  // Wave progression
+  if (S.totalDeflects > 0 && S.totalDeflects % 8 === 0 && S.frame % 10 === 0) {
+    S.wave = Math.min(S.wave + 1, 15);
+    document.getElementById('hud-wave').textContent = S.wave;
+  }
+
+  // Shield decay
+  if (S.shield.showTimer > 0) S.shield.showTimer--;
+
+  // Update bolts
+  S.bolts.forEach(b => {
+    if (b.deflected || b.hit) return;
+
+    // Telegraph phase
+    if (b.telegraphTimer > 0) {
+      b.telegraphTimer--;
+      return;
+    }
+    b.active = true;
+    b.progress += b.speed;
+
+    // Missed window — bolt hits
+    if (b.progress >= WINDOW_CLOSE && !b.deflected) {
+      b.hit = true;
+      onBoltHit(b);
+    }
+  });
+
+  // Remove done bolts
+  S.bolts = S.bolts.filter(b => {
+    if (b.deflected) return b.progress < 1.4; // keep briefly for visual
+    if (b.hit) return false;
+    return true;
+  });
+
+  // Advance deflected bolts outward (ricochet)
+  S.bolts.forEach(b => {
+    if (b.deflected) b.progress += b.speed * 2;
+  });
+
+  // Particles
+  S.particles.forEach(p => { p.x+=p.vx; p.y+=p.vy; p.vy+=0.04; p.life-=p.decay; });
+  S.particles = S.particles.filter(p => p.life > 0);
+
+  // Popups
+  S.popups.forEach(p => { p.y -= 1.2; p.life -= 0.022; });
+  S.popups = S.popups.filter(p => p.life > 0);
+
+  // Shake decay
+  if (S.shake > 0) S.shake *= 0.7;
+}
+
+function onBoltHit(b) {
+  S.lives--;
+  S.streak = 0;
+  S.shake = 14;
+  addPopup(CX, CY - 50, 'HIT!', '#ff4400', 1.8);
+  burst(CX, CY, '#ff4400', 20);
+  updateLives();
+  if (S.lives <= 0) setTimeout(endGame, 600);
+}
+
+// ─── DRAW ─────────────────────────────────────────────
+function draw() {
+  ctx.save();
+  if (S.shake > 0.3) ctx.translate((Math.random()-.5)*S.shake, (Math.random()-.5)*S.shake);
+
+  // Background
+  ctx.fillStyle = '#07070f';
+  ctx.fillRect(-20, -20, W+40, H+40);
+
+  // Subtle grid
+  ctx.strokeStyle = 'rgba(255,230,0,0.025)';
+  ctx.lineWidth = 1;
+  for (let x=0; x<W; x+=44) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for (let y=0; y<H; y+=44) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  if (S.active) {
+    drawDirectionZones();
+    drawRing();
+    drawBolts();
+    drawShield();
+    drawPlayer();
+    drawParticles();
+    drawPopups();
+    drawComboBar();
+  }
+
+  ctx.restore();
+}
+
+function drawDirectionZones() {
+  // Faint quadrant highlights
+  DIR_KEYS.forEach(dk => {
+    const d = DIRS[dk];
+    // Check if any active telegraph in this dir
+    const hasTelegraph = S.bolts.some(b => b.dir === dk && b.telegraphTimer > 0 && !b.deflected);
+    const hasActive    = S.bolts.some(b => b.dir === dk && b.active && !b.deflected && !b.hit && b.progress < WINDOW_OPEN);
+    const inWindow     = S.bolts.some(b => b.dir === dk && b.active && !b.deflected && !b.hit && b.progress >= WINDOW_OPEN);
+    const isShield     = S.shield.dir === dk && S.shield.showTimer > 0;
+
+    let alpha = 0;
+    let color = '255,230,0';
+
+    if (hasTelegraph) { alpha = 0.06; color = '255,230,0'; }
+    if (hasActive)    { alpha = 0.04; color = '255,230,0'; }
+    if (inWindow)     { alpha = 0.13; color = '0,255,170'; }
+    if (isShield)     { alpha = Math.max(alpha, 0.09 * (S.shield.showTimer/25)); color = '79,195,247'; }
+
+    if (alpha < 0.01) return;
+
+    // Draw wedge from center outward
+    const angle = d.angle;
+    const spread = Math.PI / 2;
+    ctx.beginPath();
+    ctx.moveTo(CX, CY);
+    ctx.arc(CX, CY, Math.max(W,H), angle - spread/2, angle + spread/2);
+    ctx.closePath();
+    ctx.fillStyle = `rgba(${color},${alpha})`;
+    ctx.fill();
+
+    // Direction label at edge
+    const lx = CX + d.dx * (Math.min(W,H)*0.44);
+    const ly = CY + d.dy * (Math.min(W,H)*0.44);
+    ctx.font = '700 1.1rem Orbitron, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = inWindow ? `rgba(0,255,170,0.7)` : hasTelegraph ? `rgba(255,230,0,0.4)` : `rgba(255,255,255,0.07)`;
+    ctx.fillText(dk, lx, ly);
+  });
+}
+
+function drawRing() {
+  const t = S.frame * 0.03;
+
+  // Outer ghost ring
+  ctx.beginPath();
+  ctx.arc(CX, CY, RING_R + 18 + Math.sin(t)*3, 0, Math.PI*2);
+  ctx.strokeStyle = 'rgba(255,230,0,0.06)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Main ring — glows green when a bolt is in window
+  const anyInWindow = S.bolts.some(b => b.active && !b.deflected && !b.hit && b.progress >= WINDOW_OPEN);
+  ctx.beginPath();
+  ctx.arc(CX, CY, RING_R, 0, Math.PI*2);
+  ctx.strokeStyle = anyInWindow ? 'rgba(0,255,170,0.7)' : 'rgba(255,230,0,0.25)';
+  ctx.lineWidth = anyInWindow ? 3 : 2;
+  ctx.shadowColor = anyInWindow ? '#00ffaa' : '#ffe600';
+  ctx.shadowBlur = anyInWindow ? 16 : 6;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+}
+
+function drawBolts() {
+  S.bolts.forEach(b => {
+    if (!b.active) {
+      // Telegraph: flashing edge glow
+      if (b.telegraphTimer > 0) {
+        const d = DIRS[b.dir];
+        const sr = SPAWN_R();
+        const blink = Math.sin(b.telegraphTimer * 0.5) > 0;
+        if (!blink) return;
+        const tx = CX + d.dx * (sr - 20);
+        const ty = CY + d.dy * (sr - 20);
+        ctx.beginPath();
+        ctx.arc(tx, ty, 12, 0, Math.PI*2);
+        ctx.fillStyle = 'rgba(255,230,0,0.6)';
+        ctx.shadowColor = '#ffe600';
+        ctx.shadowBlur = 20;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+      return;
+    }
+
+    const d = DIRS[b.dir];
+    const sr = SPAWN_R();
+
+    // Bolt position: travels from spawn to center
+    // progress 0→1 maps spawn→center, but we draw full lightning from spawn
+    const headX = CX + d.dx * sr * (1 - b.progress);
+    const headY = CY + d.dy * sr * (1 - b.progress);
+
+    const inWindow = b.progress >= WINDOW_OPEN && b.progress < WINDOW_CLOSE;
+    const boltColor = b.deflected ? '#00ffaa' : inWindow ? '#aaff00' : '#ffe600';
+
+    // Draw lightning segments from head toward spawn
+    const segs = b.segments;
+    ctx.save();
+    ctx.shadowColor = boltColor;
+    ctx.shadowBlur = 12;
+
+    // Only draw the portion that has "arrived" (from spawn edge to head)
+    for (let layer = 0; layer < 3; layer++) {
+      ctx.beginPath();
+      let started = false;
+      for (let i = 0; i < segs.length - 1; i++) {
+        const t0 = segs[i].t;
+        if (t0 > b.progress) break;
+        const x0 = CX + d.dx * sr * (1 - segs[i].t)   + segs[i].jx;
+        const y0 = CY + d.dy * sr * (1 - segs[i].t)   + segs[i].jy;
+        const x1 = CX + d.dx * sr * (1 - segs[i+1].t) + segs[i+1].jx;
+        const y1 = CY + d.dy * sr * (1 - segs[i+1].t) + segs[i+1].jy;
+        if (!started) { ctx.moveTo(x0, y0); started = true; }
+        ctx.lineTo(x1, y1);
+      }
+      ctx.strokeStyle = layer === 0 ? '#fff' : layer === 1 ? boltColor : boltColor + '66';
+      ctx.lineWidth   = layer === 0 ? 1 : layer === 1 ? 2.5 : 6;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Head glow
+    ctx.beginPath();
+    ctx.arc(headX, headY, 7, 0, Math.PI*2);
+    ctx.fillStyle = boltColor;
+    ctx.shadowColor = boltColor;
+    ctx.shadowBlur = 20;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Window indicator arc on ring
+    if (inWindow) {
+      const ang = d.angle;
+      ctx.beginPath();
+      ctx.arc(CX, CY, RING_R, ang - 0.35, ang + 0.35);
+      ctx.strokeStyle = 'rgba(0,255,170,0.9)';
+      ctx.lineWidth = 5;
+      ctx.shadowColor = '#00ffaa';
+      ctx.shadowBlur = 10;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+  });
+}
+
+function drawShield() {
+  if (!S.shield.dir || S.shield.showTimer <= 0) return;
+  const d = DIRS[S.shield.dir];
+  const alpha = S.shield.showTimer / 25;
+  const ang = d.angle;
+  const r1 = RING_R * 0.45;
+  const r2 = RING_R * 1.1;
+  const spread = 0.55;
+
+  // Shield arc
+  ctx.beginPath();
+  ctx.arc(CX, CY, RING_R * 0.78, ang - spread, ang + spread);
+  ctx.strokeStyle = `rgba(79,195,247,${alpha * 0.9})`;
+  ctx.lineWidth = 8;
+  ctx.lineCap = 'round';
+  ctx.shadowColor = '#4fc3f7';
+  ctx.shadowBlur = 20 * alpha;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Inner glow wedge
+  ctx.beginPath();
+  ctx.moveTo(CX, CY);
+  ctx.arc(CX, CY, RING_R * 0.85, ang - spread, ang + spread);
+  ctx.closePath();
+  ctx.fillStyle = `rgba(79,195,247,${alpha * 0.08})`;
+  ctx.fill();
+}
+
+function drawPlayer() {
+  const t = S.frame * 0.04;
+
+  // Body glow
+  const grd = ctx.createRadialGradient(CX, CY, 0, CX, CY, BOLT_HIT_R * 1.8);
+  grd.addColorStop(0, 'rgba(79,195,247,0.2)');
+  grd.addColorStop(1, 'transparent');
+  ctx.beginPath();
+  ctx.arc(CX, CY, BOLT_HIT_R * 1.8, 0, Math.PI*2);
+  ctx.fillStyle = grd;
+  ctx.fill();
+
+  // Armor rings
+  for (let i = 2; i >= 0; i--) {
+    const r = BOLT_HIT_R - i * 6;
+    const alpha = 0.15 + i * 0.1;
+    ctx.beginPath();
+    ctx.arc(CX, CY, r, 0, Math.PI*2);
+    ctx.strokeStyle = `rgba(79,195,247,${alpha})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // Core
+  ctx.beginPath();
+  ctx.arc(CX, CY, 12, 0, Math.PI*2);
+  ctx.fillStyle = '#4fc3f7';
+  ctx.shadowColor = '#4fc3f7';
+  ctx.shadowBlur = 16;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Pulse dot
+  ctx.beginPath();
+  ctx.arc(CX - 3, CY - 3, 4, 0, Math.PI*2);
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.fill();
+
+  // Direction tick marks
+  DIR_KEYS.forEach(dk => {
+    const d = DIRS[dk];
+    const r = BOLT_HIT_R + 10;
+    const x = CX + d.dx * r, y = CY + d.dy * r;
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,230,0,0.3)';
+    ctx.fill();
+  });
+}
+
+function drawParticles() {
+  S.particles.forEach(p => {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI*2);
+    ctx.fillStyle = p.color + Math.floor(p.life * 255).toString(16).padStart(2,'0');
+    ctx.fill();
+  });
+}
+
+function drawPopups() {
+  S.popups.forEach(p => {
+    ctx.save();
+    ctx.globalAlpha = p.life;
+    ctx.font = `900 ${p.size}rem Orbitron, monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 12;
+    ctx.fillText(p.text, p.x, p.y);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  });
+}
+
+function drawComboBar() {
+  const pct = Math.min(S.streak / 10, 1) * 100;
+  document.getElementById('combo-bar').style.width = pct + '%';
+}
+
+// ─── HELPERS ──────────────────────────────────────────
+function burst(x, y, color, n) {
+  for (let i=0; i<n; i++) {
+    const ang = Math.PI*2*i/n + Math.random()*0.5;
+    const spd = 2 + Math.random() * 4;
+    S.particles.push({ x, y, vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd, r:2+Math.random()*3, color, life:1, decay:0.022+Math.random()*0.02 });
+  }
+}
+
+function addPopup(x, y, text, color, size=1) {
+  S.popups.push({ x, y, text, color, size, life:1 });
+}
+
+// ─── HUD ──────────────────────────────────────────────
+function updateHUD() {
+  document.getElementById('hud-score').textContent = S.score.toLocaleString();
+}
+function updateLives() {
+  for (let i=0; i<3; i++) document.getElementById(`p${i}`).classList.toggle('dead', i >= S.lives);
+}
+
+// ─── GAME FLOW ─────────────────────────────────────────
+function startGame() {
+  S = makeState();
+  S.active = true;
+  document.getElementById('scr-start').classList.add('hidden');
+  document.getElementById('scr-over').classList.add('hidden');
+  updateLives();
+  updateHUD();
+}
+
+function endGame() {
+  S.active = false;
+  document.getElementById('over-title').textContent = 'FRIED';
+  document.getElementById('over-score').textContent = S.score.toLocaleString();
+  document.getElementById('st-wave').textContent     = S.wave;
+  document.getElementById('st-deflects').textContent = S.totalDeflects;
+  document.getElementById('st-streak').textContent   = S.bestStreak;
+  document.getElementById('scr-over').classList.remove('hidden');
+}
+
+// ─── INPUT ────────────────────────────────────────────
+canvas.addEventListener('pointerdown', e => { e.preventDefault(); onTap(e.clientX, e.clientY); }, { passive:false });
+canvas.addEventListener('touchstart',  e => { e.preventDefault(); onTap(e.touches[0].clientX, e.touches[0].clientY); }, { passive:false });
+
+// Keyboard: arrow keys or WASD
+document.addEventListener('keydown', e => {
+  const map = { ArrowUp:'N', ArrowDown:'S', ArrowRight:'E', ArrowLeft:'W', w:'N', s:'S', d:'E', a:'W', W:'N', S:'S', D:'E', A:'W' };
+  if (map[e.key]) onTap(CX + DIRS[map[e.key]].dx * 10, CY + DIRS[map[e.key]].dy * 10);
+});
+
+document.getElementById('btn-start').addEventListener('click', startGame);
+document.getElementById('btn-retry').addEventListener('click', startGame);
+
+// ─── LOOP ─────────────────────────────────────────────
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>

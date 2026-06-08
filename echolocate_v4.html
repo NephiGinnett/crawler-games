@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>ECHOLOCATE</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Share+Tech+Mono&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#04020a;--bat:#c084fc;--bat-glow:#a855f7;--ui:#e879f9;--ui-dim:#7e22ce}
+html,body{width:100%;height:100%;background:var(--bg);font-family:'Silkscreen',monospace;color:var(--ui);overflow:hidden;touch-action:none}
+#screen{display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%}
+#hud{display:flex;justify-content:space-between;align-items:center;width:100%;max-width:460px;padding:6px 12px;font-size:11px;letter-spacing:2px;text-transform:uppercase;flex-shrink:0}
+.label{color:var(--ui-dim);font-size:9px}.val{color:var(--ui);font-size:14px}
+#echo-bar-wrap{width:80px;height:6px;background:#1a0a2e;border-radius:3px;margin-top:2px;overflow:hidden}
+#echo-bar{height:100%;background:var(--bat-glow);border-radius:3px;box-shadow:0 0 6px var(--bat-glow)}
+#canvas-wrap{position:relative;flex-shrink:0}
+canvas{display:block}
+#canvas-wrap::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(to bottom,transparent 0px,transparent 3px,rgba(0,0,0,0.12) 3px,rgba(0,0,0,0.12) 4px);pointer-events:none}
+#dpad{display:none;position:relative;width:160px;height:160px;margin-top:10px;flex-shrink:0}
+.db{position:absolute;width:50px;height:50px;background:rgba(168,85,247,0.13);border:1.5px solid rgba(168,85,247,0.35);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:22px;cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent;color:var(--bat)}
+.db.on{background:rgba(168,85,247,0.45);box-shadow:0 0 14px var(--bat-glow)}
+#du{top:0;left:55px}#dd{bottom:0;left:55px}#dl{top:55px;left:0}#dr{top:55px;right:0}
+.overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(4,2,10,0.93);z-index:10}
+.overlay h1{font-size:clamp(24px,7vw,44px);color:var(--bat);text-shadow:0 0 20px var(--bat-glow),0 0 40px var(--bat-glow);letter-spacing:4px;margin-bottom:8px}
+.sub{font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--ui-dim);letter-spacing:2px;margin-bottom:24px;text-align:center;max-width:270px;line-height:1.9}
+.tip{font-family:'Share Tech Mono',monospace;font-size:11px;color:#4a1a6e;letter-spacing:2px;margin-bottom:5px}
+.big-btn{margin-top:18px;padding:13px 38px;background:transparent;border:2px solid var(--bat);color:var(--bat);font-family:'Silkscreen',monospace;font-size:14px;letter-spacing:4px;cursor:pointer;text-transform:uppercase;box-shadow:0 0 20px rgba(168,85,247,0.3);transition:all 0.2s;-webkit-tap-highlight-color:transparent}
+.big-btn:active{background:rgba(168,85,247,0.22)}
+#final-score{font-size:28px;color:var(--ui);text-shadow:0 0 20px var(--ui);margin:10px 0}
+@keyframes pb{0%,100%{text-shadow:0 0 20px var(--bat-glow),0 0 40px var(--bat-glow)}50%{text-shadow:0 0 50px var(--bat-glow),0 0 90px var(--bat-glow)}}
+.pulse{animation:pb 2s ease-in-out infinite}
+</style>
+</head>
+<body>
+<div id="screen">
+  <div id="hud">
+    <div><div class="label">BUGS</div><div class="val" id="hud-score">0</div></div>
+    <div style="text-align:center"><div class="label">ECHO</div><div id="echo-bar-wrap"><div id="echo-bar" style="width:100%"></div></div></div>
+    <div style="text-align:center"><div class="label">TIME</div><div class="val" id="hud-time">0.0s</div></div>
+    <div style="text-align:right"><div class="label">SPEED</div><div class="val" id="hud-speed">1.0x</div></div>
+  </div>
+  <div id="canvas-wrap">
+    <canvas id="game"></canvas>
+    <div class="overlay" id="ov-start">
+      <h1 class="pulse">🦇</h1>
+      <h1>ECHOLOCATE</h1>
+      <div class="sub">You are a bat.<br>Hunt every bug in the dark.<br>Each shriek lights the maze—<br>then silence swallows it again.</div>
+      <div class="tip">D-PAD · SWIPE · WASD · ARROWS</div>
+      <div class="tip">Eat bugs to fly faster</div>
+      <button class="big-btn" id="btn-start">HUNT</button>
+    </div>
+    <div class="overlay" id="ov-death" style="display:none">
+      <h1>SPLAT</h1>
+      <div class="sub">You flew into a wall.<br>The bugs escape... for now.</div>
+      <button class="big-btn" id="btn-death-restart">TRY AGAIN</button>
+    </div>
+    <div class="overlay" id="ov-end" style="display:none">
+      <h1>ALL CLEAR</h1>
+      <div class="sub">Every last bug devoured.</div>
+      <div id="final-score"></div>
+      <div id="final-breakdown" style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--ui-dim);letter-spacing:2px;text-align:center;line-height:2"></div>
+      <button class="big-btn" id="btn-restart">HUNT AGAIN</button>
+    </div>
+  </div>
+  <div id="dpad">
+    <div class="db" id="du">▲</div>
+    <div class="db" id="dd">▼</div>
+    <div class="db" id="dl">◀</div>
+    <div class="db" id="dr">▶</div>
+  </div>
+</div>
+<script>
+// ── MAP: 0=open 1=wall 2=bug 3=spawn ──────────────────────────────────────────
+// Smaller 15×11 map
+const RAW=[
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+  [1,2,2,2,1,2,2,2,2,2,1,2,2,2,1],
+  [1,2,1,2,2,2,1,2,1,2,2,2,1,2,1],
+  [1,2,1,2,1,2,1,2,1,2,1,2,1,2,1],
+  [1,2,2,2,2,2,2,2,2,2,2,2,2,2,1],
+  [1,2,1,2,1,0,1,3,1,0,1,2,1,2,1],
+  [1,2,2,2,2,2,2,2,2,2,2,2,2,2,1],
+  [1,2,1,2,1,2,1,2,1,2,1,2,1,2,1],
+  [1,2,1,2,2,2,1,2,1,2,2,2,1,2,1],
+  [1,2,2,2,1,2,2,2,2,2,1,2,2,2,1],
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+];
+const NR=RAW.length, NC=RAW[0].length;
+
+const canvas=document.getElementById('game');
+const ctx=canvas.getContext('2d');
+let CS=36;
+
+function resize(){
+  const mw=Math.min(window.innerWidth,520);
+  const mh=window.innerHeight-220;
+  CS=Math.max(18,Math.min(Math.floor(mw/NC),Math.floor(mh/NR),46));
+  canvas.width=NC*CS; canvas.height=NR*CS;
+  document.getElementById('dpad').style.display=
+    ('ontouchstart' in window||window.innerWidth<700)?'flex':'none';
+}
+resize();
+window.addEventListener('resize',resize);
+
+// ── STATE ──────────────────────────────────────────────────────────────────────
+let map, totalBugs, score, eaten, running=false;
+let gameStartTs=0, elapsedMs=0;
+let lastTs=0, wingT=0, bugT=0;
+
+// Tile-based movement
+let tileC=0, tileR=0;
+let pixX=0, pixY=0;
+let faceDX=0, faceDY=0;
+let qDX=0, qDY=0;
+
+const BASE_SPD=2.8, MAX_SPD=8; // tiles/sec — nice and slow
+let spd=BASE_SPD;
+
+// ── SONAR SYSTEM ──────────────────────────────────────────────────────────────
+// Each cell stores the timestamp it was last illuminated by a pulse.
+// We fade its brightness based on how long ago that was.
+const FADE_MS = 3500;   // how long a cell stays visible after being lit
+const PULSE_INTERVAL = 2800; // ms between pulses
+const PULSE_SPEED = 6;  // cells per second the pulse ring travels outward
+const PULSE_MAX_TILES = 4; // how far the pulse reaches
+let tileLastLit;        // 2D array of timestamps
+let lastPulseTs = 0;    // when last pulse fired
+let pulseRadius = 0;    // current radius of expanding ring (in tiles)
+let pulsing = false;    // is a pulse currently expanding?
+let pulseX=0, pulseY=0; // pixel origin of pulse ring (for drawing)
+let pulseAge=0;         // ms since pulse fired
+
+// How bright is a cell right now (0..1)
+function cellBrightness(r,c,now){
+  const lit = tileLastLit[r][c];
+  if(lit===0) return 0;
+  const age = now - lit;
+  if(age<=0) return 1;
+  if(age>=FADE_MS) return 0;
+  // Ease out: bright flash then slow fade
+  return Math.pow(1 - age/FADE_MS, 1.4);
+}
+
+function firePulse(now){
+  lastPulseTs=now;
+  pulsing=true;
+  pulseRadius=0;
+  pulseAge=0;
+  pulseX=pixX; pulseY=pixY;
+}
+
+// ── HELPERS ────────────────────────────────────────────────────────────────────
+const isWall=(c,r)=>r<0||r>=NR||c<0||c>=NC||map[r][c]===1;
+const tileCenter=(c,r)=>({x:c*CS+CS/2, y:r*CS+CS/2});
+
+function updateHUD(){
+  document.getElementById('hud-score').textContent=score;
+  document.getElementById('hud-speed').textContent=(spd/BASE_SPD).toFixed(1)+'x';
+  document.getElementById('hud-time').textContent=(elapsedMs/1000).toFixed(1)+'s';
+  const sinceLast = pulsing ? 0 : Math.min(1,(performance.now()-lastPulseTs)/PULSE_INTERVAL);
+  const pct = pulsing ? 100 : (1-sinceLast)*100;
+  document.getElementById('echo-bar').style.width=pct+'%';
+  document.getElementById('echo-bar').style.background='var(--bat-glow)';
+}
+
+// ── INIT ────────────────────────────────────────────────────────────────────
+function init(){
+  map=RAW.map(r=>[...r]);
+  tileLastLit=RAW.map(r=>r.map(()=>0));
+  totalBugs=0; score=0; eaten=0; spd=BASE_SPD;
+  wingT=0; bugT=0;
+  qDX=0; qDY=0; faceDX=0; faceDY=0;
+  gameStartTs=0; elapsedMs=0;
+  pulsing=false; pulseRadius=0; lastPulseTs=0;
+
+  let sc=7, sr=5;
+  for(let r=0;r<NR;r++) for(let c=0;c<NC;c++){
+    if(map[r][c]===2) totalBugs++;
+    if(map[r][c]===3){ sr=r; sc=c; map[r][c]=0; }
+  }
+  tileC=sc; tileR=sr;
+  const p=tileCenter(sc,sr);
+  pixX=p.x; pixY=p.y;
+  updateHUD();
+}
+
+// ── GAME LOOP ──────────────────────────────────────────────────────────────────
+function loop(ts){
+  if(!running) return;
+  const dt=Math.min(ts-lastTs,50); lastTs=ts;
+  if(gameStartTs===0) gameStartTs=ts;
+  elapsedMs=ts-gameStartTs;
+  bugT+=dt*0.003;
+
+  // Fire pulse on interval
+  if(!pulsing && ts-lastPulseTs >= PULSE_INTERVAL){
+    firePulse(ts);
+  }
+
+  // Advance pulse ring
+  if(pulsing){
+    pulseAge+=dt;
+    pulseRadius = PULSE_SPEED * (pulseAge/1000) * CS; // pixels
+
+    // Light up tiles the ring is passing through
+    const ringTileR = pulseRadius/CS;
+    const maxDist = Math.sqrt(NC*NC+NR*NR);
+    for(let r=0;r<NR;r++) for(let c=0;c<NC;c++){
+      if(map[r][c]===1){
+        const dx=c-tileC, dy=r-tileR;
+        const d=Math.sqrt(dx*dx+dy*dy);
+        // Light up walls within a narrow band around the expanding ring
+        if(d<=PULSE_MAX_TILES && Math.abs(d-ringTileR)<1.2){
+          tileLastLit[r][c]=ts;
+        }
+      }
+    }
+    // Also always light up adjacent open tiles so bat can see nearby floor/bugs
+    for(let r=0;r<NR;r++) for(let c=0;c<NC;c++){
+      if(map[r][c]!==1){
+        const dx=c-tileC, dy=r-tileR;
+        const d=Math.sqrt(dx*dx+dy*dy);
+        if(d<=PULSE_MAX_TILES && d<=ringTileR+0.5 && d>=ringTileR-2.5){
+          tileLastLit[r][c]=ts;
+        }
+      }
+    }
+
+    // Pulse done when ring leaves the map
+    if(ringTileR > PULSE_MAX_TILES) pulsing=false;
+  }
+
+  // Always keep bat's immediate tile + neighbours lit
+  for(let dr=-1;dr<=1;dr++) for(let dc=-1;dc<=1;dc++){
+    const r=tileR+dr, c=tileC+dc;
+    if(r>=0&&r<NR&&c>=0&&c<NC) tileLastLit[r][c]=ts;
+  }
+
+  // ── MOVEMENT ────────────────────────────────────────────────────────────────
+  const step=spd*CS*(dt/1000);
+  const target=tileCenter(tileC,tileR);
+  const dxT=target.x-pixX, dyT=target.y-pixY;
+  const dist=Math.sqrt(dxT*dxT+dyT*dyT);
+
+  if(dist<=step){
+    pixX=target.x; pixY=target.y;
+    let moved=false;
+    for(const [dx,dy] of [[qDX,qDY],[faceDX,faceDY]]){
+      if(dx===0&&dy===0) continue;
+      const nc=tileC+dx, nr=tileR+dy;
+      if(!isWall(nc,nr)){
+        tileC=nc; tileR=nr;
+        faceDX=dx; faceDY=dy;
+        moved=true;
+        break;
+      }
+    }
+    // Wall collision death: only if bat was already in motion (not sitting still at start)
+    const wasMoving = faceDX!==0||faceDY!==0;
+    const playerTriedToMove = qDX!==0||qDY!==0;
+    if(!moved && wasMoving && playerTriedToMove){
+      updateHUD(); deathGame(); return;
+    }
+    // If stopped with no valid move, just stay put (don't die sitting still)
+    if(map[tileR]&&map[tileR][tileC]===2){
+      map[tileR][tileC]=0; score++; eaten++;
+      spd=Math.min(BASE_SPD+eaten*0.25, MAX_SPD);
+      // Eating a bug fires an extra pulse
+      firePulse(ts);
+    }
+    if(score>=totalBugs){ updateHUD(); endGame(); return; }
+  } else {
+    pixX+=dxT/dist*step; pixY+=dyT/dist*step;
+  }
+
+  updateHUD();
+  draw(ts);
+  requestAnimationFrame(loop);
+}
+
+// ── DRAW ────────────────────────────────────────────────────────────────────
+function draw(now){
+  wingT+=16*0.013*(spd/BASE_SPD); // approximate, driven by loop
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle='#04020a'; ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // Draw all tiles with sonar fade brightness
+  for(let r=0;r<NR;r++){
+    for(let c=0;c<NC;c++){
+      const b=cellBrightness(r,c,now);
+      if(b<=0) continue;
+      const x=c*CS, y=r*CS;
+
+      if(map[r][c]===1){
+        // Wall: purple glow fades out
+        const wallAlpha=0.15+b*0.7;
+        ctx.fillStyle=`rgba(26,10,46,${wallAlpha})`;
+        ctx.fillRect(x,y,CS,CS);
+        ctx.strokeStyle=`rgba(100,40,160,${b*0.9})`;
+        ctx.lineWidth=1.5;
+        ctx.strokeRect(x+0.75,y+0.75,CS-1.5,CS-1.5);
+        // Extra glow on fresh lit walls
+        if(b>0.6){
+          ctx.strokeStyle=`rgba(168,85,247,${(b-0.6)*2*0.6})`;
+          ctx.lineWidth=2.5;
+          ctx.strokeRect(x+0.75,y+0.75,CS-1.5,CS-1.5);
+        }
+      } else if(map[r][c]===2){
+        // Bug: green dot, fades slower
+        const bugB=Math.max(b,0.25); // bugs stay slightly visible longer
+        const pulse=0.65+0.35*Math.sin(bugT+c*0.9+r*1.3);
+        ctx.save();
+        ctx.shadowColor='#7fff3a';
+        ctx.shadowBlur=10*pulse*bugB;
+        ctx.fillStyle=`rgba(127,255,58,${pulse*bugB})`;
+        ctx.beginPath();
+        ctx.arc(x+CS/2,y+CS/2,3.5,0,Math.PI*2);
+        ctx.fill();
+        // legs
+        ctx.strokeStyle=`rgba(127,255,58,${pulse*bugB*0.5})`;
+        ctx.lineWidth=0.8;
+        const px=x+CS/2,py=y+CS/2;
+        for(let l=0;l<3;l++){
+          const la=-0.4+l*0.4;
+          ctx.beginPath(); ctx.moveTo(px-3,py); ctx.lineTo(px-6*Math.cos(la),py+4*Math.sin(la)); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(px+3,py); ctx.lineTo(px+6*Math.cos(la),py+4*Math.sin(la)); ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+  }
+
+  // Draw the expanding pulse ring itself (visual ripple)
+  if(pulsing){
+    const ringAlpha=Math.max(0, 0.55*(1-pulseAge/700));
+    if(ringAlpha>0){
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(pulseX,pulseY,pulseRadius,0,Math.PI*2);
+      ctx.strokeStyle=`rgba(168,85,247,${ringAlpha})`;
+      ctx.lineWidth=3;
+      ctx.shadowColor='#a855f7';
+      ctx.shadowBlur=18;
+      ctx.stroke();
+      // Inner fainter ring
+      if(pulseRadius>CS){
+        ctx.beginPath();
+        ctx.arc(pulseX,pulseY,pulseRadius-CS*0.6,0,Math.PI*2);
+        ctx.strokeStyle=`rgba(168,85,247,${ringAlpha*0.3})`;
+        ctx.lineWidth=1.5;
+        ctx.shadowBlur=8;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  // Always-dim wall silhouettes (barely visible for orientation)
+  for(let r=0;r<NR;r++) for(let c=0;c<NC;c++) if(map[r][c]===1){
+    const b=cellBrightness(r,c,now);
+    if(b<=0){
+      ctx.fillStyle='rgba(10,3,18,0.6)';
+      ctx.fillRect(c*CS,r*CS,CS,CS);
+    }
+  }
+
+  // Bat
+  const flap=Math.sin(wingT);
+  const ang=Math.atan2(faceDY,faceDX);
+  ctx.save(); ctx.translate(pixX,pixY); ctx.rotate(ang-Math.PI/2);
+  const R=CS*0.36;
+  const g=ctx.createRadialGradient(0,0,0,0,0,R*2.6);
+  g.addColorStop(0,'rgba(192,132,252,0.32)'); g.addColorStop(1,'rgba(192,132,252,0)');
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,R*2.6,0,Math.PI*2); ctx.fill();
+  ctx.shadowColor='#a855f7'; ctx.shadowBlur=16;
+  const ws=R*1.8+flap*R*0.85, wh=R*0.55-flap*R*0.28;
+  ctx.fillStyle='rgba(192,132,252,0.9)';
+  ctx.beginPath(); ctx.moveTo(0,-R*.3); ctx.quadraticCurveTo(-ws,-wh,-ws*.38,R*.5); ctx.quadraticCurveTo(-R*.2,R*.1,0,R*.2); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(0,-R*.3); ctx.quadraticCurveTo(ws,-wh,ws*.38,R*.5); ctx.quadraticCurveTo(R*.2,R*.1,0,R*.2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0,0,R*.36,R*.58,0,0,Math.PI*2); ctx.fillStyle='#c084fc'; ctx.fill();
+  ctx.fillStyle='#e879f9';
+  ctx.beginPath(); ctx.moveTo(-R*.24,-R*.5); ctx.lineTo(-R*.44,-R*.98); ctx.lineTo(-R*.06,-R*.54); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(R*.24,-R*.5); ctx.lineTo(R*.44,-R*.98); ctx.lineTo(R*.06,-R*.54); ctx.fill();
+  ctx.fillStyle='#fde68a'; ctx.shadowColor='#fde68a'; ctx.shadowBlur=6;
+  ctx.beginPath(); ctx.arc(-R*.14,-R*.1,R*.1,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(R*.14,-R*.1,R*.1,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+
+// ── CONTROLS ──────────────────────────────────────────────────────────────────
+document.addEventListener('keydown',e=>{
+  const m={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1],
+           a:[-1,0],A:[-1,0],d:[1,0],D:[1,0],w:[0,-1],W:[0,-1],s:[0,1],S:[0,1]};
+  if(m[e.key]){ [qDX,qDY]=m[e.key]; e.preventDefault(); }
+});
+
+let activeBtn=null;
+[['du',[0,-1]],['dd',[0,1]],['dl',[-1,0]],['dr',[1,0]]].forEach(([id,[dx,dy]])=>{
+  const btn=document.getElementById(id);
+  const press=e=>{
+    e.preventDefault();
+    qDX=dx; qDY=dy;
+    if(activeBtn) activeBtn.classList.remove('on');
+    btn.classList.add('on'); activeBtn=btn;
+  };
+  btn.addEventListener('touchstart',press,{passive:false});
+  btn.addEventListener('mousedown',press);
+});
+
+let sx=0,sy=0;
+canvas.addEventListener('touchstart',e=>{sx=e.touches[0].clientX;sy=e.touches[0].clientY},{passive:true});
+canvas.addEventListener('touchend',e=>{
+  const dx=e.changedTouches[0].clientX-sx, dy=e.changedTouches[0].clientY-sy;
+  if(Math.abs(dx)<12&&Math.abs(dy)<12) return;
+  if(Math.abs(dx)>Math.abs(dy)){qDX=dx>0?1:-1;qDY=0;}
+  else{qDX=0;qDY=dy>0?1:-1;}
+},{passive:true});
+
+// ── GAME FLOW ──────────────────────────────────────────────────────────────────
+function startGame(){
+  document.getElementById('ov-start').style.display='none';
+  document.getElementById('ov-end').style.display='none';
+  document.getElementById('ov-death').style.display='none';
+  init(); running=true; lastTs=performance.now();
+  requestAnimationFrame(ts=>{lastTs=ts; requestAnimationFrame(loop);});
+}
+function calcFinalScore(){
+  const secs=elapsedMs/1000;
+  const bugPoints=score*100;
+  // Time bonus: 5000 pts for clearing in 30s, scaling down
+  const timeBonus=Math.max(0,Math.round(5000*(1 - secs/120)));
+  const speedBonus=Math.round((spd/BASE_SPD-1)*500);
+  return {bugPoints,timeBonus,speedBonus,total:bugPoints+timeBonus+speedBonus,secs};
+}
+function endGame(){
+  running=false;
+  const {bugPoints,timeBonus,speedBonus,total,secs}=calcFinalScore();
+  document.getElementById('final-score').textContent=total+' PTS';
+  document.getElementById('final-breakdown').innerHTML=
+    score+' bugs × 100 = '+bugPoints+'<br>'+
+    'time ('+secs.toFixed(1)+'s) = +'+timeBonus+'<br>'+
+    'speed bonus = +'+speedBonus;
+  document.getElementById('ov-end').style.display='flex';
+}
+function deathGame(){
+  running=false;
+  document.getElementById('ov-death').style.display='flex';
+}
+document.getElementById('btn-start').addEventListener('click',startGame);
+document.getElementById('btn-restart').addEventListener('click',startGame);
+document.getElementById('btn-death-restart').addEventListener('click',startGame);
+</script>
+</body>
+</html>
