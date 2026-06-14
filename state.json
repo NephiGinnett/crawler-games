@@ -24,10 +24,10 @@
       "id": "c48ba976a043",
       "userScore": null,
       "userFeedback": "",
-      "status": "idea",
+      "status": "built",
       "createdAt": "2026-06-14T05:11:12Z",
-      "builtAt": null,
-      "htmlFile": null,
+      "builtAt": "2026-06-14T06:16:17Z",
+      "htmlFile": "built/c48ba976a043.html",
       "refinements": []
     },
     {
@@ -54,10 +54,10 @@
       "id": "c48ba977bae1",
       "userScore": null,
       "userFeedback": "",
-      "status": "idea",
+      "status": "built",
       "createdAt": "2026-06-14T05:11:12Z",
-      "builtAt": null,
-      "htmlFile": null,
+      "builtAt": "2026-06-14T06:16:17Z",
+      "htmlFile": "built/c48ba977bae1.html",
       "refinements": []
     },
     {
@@ -84,10 +84,10 @@
       "id": "c48ba9786038",
       "userScore": null,
       "userFeedback": "",
-      "status": "idea",
+      "status": "built",
       "createdAt": "2026-06-14T05:11:12Z",
-      "builtAt": null,
-      "htmlFile": null,
+      "builtAt": "2026-06-14T06:16:17Z",
+      "htmlFile": "built/c48ba9786038.html",
       "refinements": []
     },
     {
@@ -154,13 +154,18 @@
   "cycle": {
     "startHour": 5,
     "startMinute": 0,
-    "currentStage": 1,
+    "currentStage": 2,
     "lastRun": "2026-06-14T05:11:12Z",
     "history": [
       {
         "stage": 1,
         "completedAt": "2026-06-14T05:11:12Z",
         "summary": "Generated 5 ideas: Tap Forge, Neon Cascade, Void Dash, Merge Relic, Echo Tower"
+      },
+      {
+        "stage": 2,
+        "completedAt": "2026-06-14T06:16:17Z",
+        "summary": "Built: Tap Forge, Neon Cascade, Void Dash"
       }
     ]
   }

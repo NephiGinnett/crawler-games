@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Tap Forge</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+body{background:#0d0d0d;color:#fff;font-family:'Segoe UI',system-ui,sans-serif;height:100dvh;display:flex;flex-direction:column;overflow:hidden;user-select:none;}
+#topbar{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#111;border-bottom:1px solid #ff6b1a44;flex-shrink:0;}
+.stat{display:flex;flex-direction:column;align-items:center;}
+.stat-label{font-size:9px;color:#777;text-transform:uppercase;letter-spacing:1px;}
+.stat-value{font-size:17px;font-weight:700;color:#ff6b1a;margin-top:2px;}
+#mult-stat .stat-value{color:#ffd700;}
+#grid-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:6px;}
+#grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;width:100%;max-width:380px;}
+.slot{aspect-ratio:1;background:#161616;border:1.5px solid #2a2a2a;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-direction:column;cursor:pointer;position:relative;transition:border-color .15s,transform .1s;overflow:hidden;}
+.slot.empty{border-style:dashed;border-color:#1e1e1e;}
+.slot.has-item{border-color:#2e2e2e;}
+.slot.dragging{opacity:.35;transform:scale(.95);}
+.slot.drop-target{border-color:#4cff6c!important;box-shadow:0 0 10px #4cff6c55;}
+.slot.has-item:active{transform:scale(.93);}
+.glow-bg{position:absolute;inset:0;background:radial-gradient(circle at 50% 60%,#ff6b1a18 0%,transparent 70%);pointer-events:none;}
+.item-emoji{font-size:26px;line-height:1;position:relative;z-index:1;}
+.item-tier{font-size:8px;color:#666;margin-top:1px;position:relative;z-index:1;}
+#botbar{padding:10px 14px;background:#111;border-top:1px solid #ff6b1a44;flex-shrink:0;display:flex;gap:8px;}
+#forge-btn{flex:1;padding:15px;background:linear-gradient(135deg,#ff6b1a,#e04500);border:none;border-radius:12px;color:#fff;font-size:17px;font-weight:700;letter-spacing:2px;cursor:pointer;box-shadow:0 0 18px #ff6b1a55;transition:transform .1s,box-shadow .1s;touch-action:manipulation;}
+#forge-btn:active{transform:scale(.95);box-shadow:0 0 8px #ff6b1a33;}
+#prestige-btn{padding:15px 10px;background:linear-gradient(135deg,#ffd700,#e08800);border:none;border-radius:12px;color:#000;font-size:11px;font-weight:700;cursor:pointer;box-shadow:0 0 14px #ffd70055;display:none;white-space:nowrap;touch-action:manipulation;}
+canvas#pc{position:fixed;inset:0;pointer-events:none;z-index:100;}
+.ftext{position:fixed;font-weight:700;color:#ff6b1a;font-size:15px;pointer-events:none;z-index:200;transform:translateX(-50%);animation:fup .9s ease-out forwards;}
+@keyframes fup{0%{opacity:1;top:var(--y)}100%{opacity:0;top:calc(var(--y) - 55px)}}
+@keyframes shk{0%,100%{transform:translate(0,0)}20%{transform:translate(-4px,1px)}40%{transform:translate(4px,-1px)}60%{transform:translate(-3px,0)}80%{transform:translate(3px,1px)}}
+.shaking{animation:shk .28s ease;}
+#overlay{position:fixed;inset:0;background:#0d0d0dcc;display:flex;align-items:center;justify-content:center;z-index:300;display:none;}
+#modal{background:#1a1a1a;border:1px solid #ff6b1a;border-radius:16px;padding:24px;text-align:center;max-width:280px;}
+#modal h2{color:#ff6b1a;margin-bottom:8px;}
+#modal p{color:#aaa;font-size:14px;margin-bottom:16px;}
+#modal .btns{display:flex;gap:8px;justify-content:center;}
+#modal button{padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-weight:700;}
+#modal #mb-yes{background:#ff6b1a;color:#fff;}
+#modal #mb-no{background:#333;color:#aaa;}
+</style>
+</head>
+<body>
+<canvas id="pc"></canvas>
+<div id="topbar">
+  <div class="stat"><div class="stat-label">Coins</div><div class="stat-value" id="cv">0</div></div>
+  <div class="stat"><div class="stat-label">Per Second</div><div class="stat-value" id="iv">0.00</div></div>
+  <div class="stat" id="mult-stat" style="display:none"><div class="stat-label">Multiplier</div><div class="stat-value" id="mv">×1.0</div></div>
+</div>
+<div id="grid-wrap"><div id="grid"></div></div>
+<div id="botbar">
+  <button id="forge-btn" onclick="forge()">⚒️ FORGE</button>
+  <button id="prestige-btn" id="pb" onclick="openPrestige()">✨ PRESTIGE</button>
+</div>
+<div id="overlay">
+  <div id="modal">
+    <h2>✨ PRESTIGE</h2>
+    <p>Reset your grid for a permanent <strong style="color:#ffd700">×1.5 multiplier</strong>.<br>Current: ×<span id="cur-mult">1.0</span></p>
+    <div class="btns">
+      <button id="mb-yes" onclick="doPrestige()">PRESTIGE!</button>
+      <button id="mb-no" onclick="closePrestige()">Cancel</button>
+    </div>
+  </div>
+</div>
+<script>
+const ROWS=6,COLS=4,TOTAL=24;
+const TIERS=[
+  {e:'⛏️',n:'Ore'},
+  {e:'🔧',n:'Ingot'},
+  {e:'🗡️',n:'Blade'},
+  {e:'⚔️',n:'Sword'},
+  {e:'🛡️',n:'Shield'},
+  {e:'🪖',n:'Armor'},
+  {e:'🔮',n:'Rune'},
+  {e:'💎',n:'Amulet'},
+  {e:'👑',n:'Crown'},
+  {e:'⭐',n:'Legend'},
+];
+let coins=0,mult=1,prestigeN=0;
+let grid=Array(TOTAL).fill(null);
+let parts=[];
+const canvas=document.getElementById('pc');
+const ctx=canvas.getContext('2d');
+function rsz(){canvas.width=innerWidth;canvas.height=innerHeight;}
+rsz();addEventListener('resize',rsz);
+
+function sv(t){return Math.pow(1.5,t)*mult;}
+function ir(){return grid.reduce((s,t)=>t?s+sv(t)*0.05:s,0);}
+function fmt(n){
+  if(n>=1e9)return(n/1e9).toFixed(2)+'B';
+  if(n>=1e6)return(n/1e6).toFixed(2)+'M';
+  if(n>=1e3)return(n/1e3).toFixed(2)+'K';
+  return n.toFixed(n<100?1:0);
+}
+
+// Drag state
+let dSrc=null,dOver=null,tHasDrag=false,tSX=0,tSY=0;
+
+function renderGrid(){
+  const g=document.getElementById('grid');
+  g.innerHTML='';
+  for(let i=0;i<TOTAL;i++){
+    const s=document.createElement('div');
+    const t=grid[i];
+    s.className='slot '+(t?'has-item':'empty');
+    s.dataset.i=i;
+    if(t){
+      s.innerHTML=`<div class="glow-bg"></div><div class="item-emoji">${TIERS[t-1].e}</div><div class="item-tier">T${t} ${TIERS[t-1].n}</div>`;
+      s.addEventListener('mousedown',msDn);
+      s.addEventListener('touchstart',tsSt,{passive:false});
+      s.addEventListener('click',()=>slotClick(i));
+    }
+    g.appendChild(s);
+  }
+  updateHUD();
+}
+
+function updateHUD(){
+  document.getElementById('cv').textContent=fmt(coins);
+  document.getElementById('iv').textContent=fmt(ir())+'/s';
+  const mx=grid.reduce((m,t)=>t&&t>m?t:m,0);
+  document.getElementById('prestige-btn').style.display=mx>=8?'block':'none';
+  if(prestigeN>0){
+    document.getElementById('mult-stat').style.display='flex';
+    document.getElementById('mv').textContent='×'+mult.toFixed(1);
+  }
+}
+
+function forge(){
+  const emp=grid.map((v,i)=>v===null?i:-1).filter(x=>x>=0);
+  if(!emp.length)return;
+  const idx=emp[Math.floor(Math.random()*emp.length)];
+  grid[idx]=1;
+  const slot=document.querySelector(`[data-i="${idx}"]`);
+  if(slot){
+    const r=slot.getBoundingClientRect();
+    burst(r.left+r.width/2,r.top+r.height/2,'#ff6b1a',10);
+  }
+  const fb=document.getElementById('forge-btn');
+  fb.style.transform='scale(.94)';
+  setTimeout(()=>fb.style.transform='',100);
+  renderGrid();
+}
+
+function slotClick(i){
+  if(tHasDrag||dSrc!==null)return;
+  if(!grid[i])return;
+  const t=grid[i];
+  const earned=sv(t);
+  coins+=earned;
+  const slot=document.querySelector(`[data-i="${i}"]`);
+  if(slot){const r=slot.getBoundingClientRect();floatText(r.left+r.width/2,r.top,'+'+fmt(earned));}
+  grid[i]=null;
+  renderGrid();
+}
+
+// Mouse drag
+function msDn(e){
+  const i=+e.currentTarget.dataset.i;
+  if(!grid[i])return;
+  dSrc=i;
+  e.currentTarget.classList.add('dragging');
+  document.addEventListener('mousemove',msMv);
+  document.addEventListener('mouseup',msUp);
+  e.preventDefault();
+}
+function msMv(e){
+  if(dSrc===null)return;
+  clearDT();
+  const el=document.elementFromPoint(e.clientX,e.clientY);
+  const s=el?.closest('.slot');
+  if(s){
+    const j=+s.dataset.i;
+    if(j!==dSrc&&grid[j]===grid[dSrc]){s.classList.add('drop-target');dOver=j;}
+    else dOver=null;
+  } else dOver=null;
+}
+function msUp(e){
+  document.removeEventListener('mousemove',msMv);
+  document.removeEventListener('mouseup',msUp);
+  if(dSrc!==null&&dOver!==null)mergeSlots(dSrc,dOver);
+  clearDrag();
+  setTimeout(()=>{dSrc=null;dOver=null;},10);
+}
+
+// Touch drag
+function tsSt(e){
+  const i=+e.currentTarget.dataset.i;
+  if(!grid[i])return;
+  dSrc=i;tHasDrag=false;
+  const t=e.touches[0];tSX=t.clientX;tSY=t.clientY;
+  document.addEventListener('touchmove',tsMv,{passive:false});
+  document.addEventListener('touchend',tsUp);
+}
+function tsMv(e){
+  e.preventDefault();
+  if(dSrc===null)return;
+  const t=e.touches[0];
+  if(!tHasDrag&&Math.hypot(t.clientX-tSX,t.clientY-tSY)>8){
+    tHasDrag=true;
+    document.querySelector(`[data-i="${dSrc}"]`)?.classList.add('dragging');
+  }
+  if(!tHasDrag)return;
+  clearDT();
+  const el=document.elementFromPoint(t.clientX,t.clientY);
+  const s=el?.closest('.slot');
+  if(s){
+    const j=+s.dataset.i;
+    if(j!==dSrc&&grid[j]===grid[dSrc]){s.classList.add('drop-target');dOver=j;}
+    else dOver=null;
+  } else dOver=null;
+}
+function tsUp(e){
+  document.removeEventListener('touchmove',tsMv);
+  document.removeEventListener('touchend',tsUp);
+  if(tHasDrag&&dSrc!==null&&dOver!==null){
+    mergeSlots(dSrc,dOver);
+  } else if(!tHasDrag&&dSrc!==null){
+    slotClick(dSrc);
+  }
+  clearDrag();
+  setTimeout(()=>{dSrc=null;dOver=null;tHasDrag=false;},10);
+}
+
+function clearDT(){document.querySelectorAll('.drop-target').forEach(s=>s.classList.remove('drop-target'));}
+function clearDrag(){document.querySelectorAll('.dragging,.drop-target').forEach(s=>s.classList.remove('dragging','drop-target'));}
+
+function mergeSlots(a,b){
+  if(grid[a]!==grid[b])return;
+  const t=grid[a];
+  const nt=Math.min(t+1,10);
+  grid[a]=null;grid[b]=nt;
+  // shake
+  document.body.classList.remove('shaking');
+  void document.body.offsetWidth;
+  document.body.classList.add('shaking');
+  setTimeout(()=>document.body.classList.remove('shaking'),300);
+  const slot=document.querySelector(`[data-i="${b}"]`);
+  if(slot){const r=slot.getBoundingClientRect();burst(r.left+r.width/2,r.top+r.height/2,'#ff6b1a',22);}
+  renderGrid();
+}
+
+function openPrestige(){
+  document.getElementById('cur-mult').textContent=mult.toFixed(1);
+  document.getElementById('overlay').style.display='flex';
+}
+function closePrestige(){document.getElementById('overlay').style.display='none';}
+function doPrestige(){
+  closePrestige();
+  grid=Array(TOTAL).fill(null);
+  mult*=1.5;prestigeN++;
+  renderGrid();
+}
+
+// Idle
+let lt=Date.now();
+setInterval(()=>{
+  const now=Date.now(),dt=(now-lt)/1000;lt=now;
+  const r=ir();
+  if(r>0){coins+=r*dt;document.getElementById('cv').textContent=fmt(coins);}
+},100);
+
+// Particles
+function burst(x,y,col,n){
+  for(let i=0;i<n;i++){
+    const a=(Math.PI*2*i/n)+Math.random()*.8;
+    const sp=1.5+Math.random()*4;
+    parts.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:1,decay:.025+Math.random()*.02,sz:1.5+Math.random()*2.5,col});
+  }
+}
+function animP(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  parts=parts.filter(p=>p.life>0);
+  for(const p of parts){
+    p.x+=p.vx;p.y+=p.vy;p.vy+=.12;p.life-=p.decay;
+    ctx.globalAlpha=p.life;ctx.fillStyle=p.col;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.sz,0,Math.PI*2);ctx.fill();
+  }
+  ctx.globalAlpha=1;
+  requestAnimationFrame(animP);
+}
+animP();
+
+function floatText(x,y,txt){
+  const el=document.createElement('div');
+  el.className='ftext';el.textContent=txt;
+  el.style.setProperty('--y',y+'px');el.style.left=x+'px';el.style.top=y+'px';
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(),950);
+}
+
+// Tap on empty slot = try forge
+document.getElementById('grid').addEventListener('click',e=>{
+  const s=e.target.closest('.slot.empty');
+  if(s)forge();
+});
+
+renderGrid();
+</script>
+</body>
+</html>
