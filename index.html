@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crawler Games</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0a0a0f;
+    color: #e0e0f0;
+    font-family: 'Courier New', monospace;
+    min-height: 100vh;
+    padding: 40px 20px;
+  }
+  header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+  header h1 {
+    font-size: clamp(2rem, 6vw, 3.5rem);
+    letter-spacing: 0.15em;
+    color: #7df9ff;
+    text-shadow: 0 0 20px #7df9ff88;
+  }
+  header p {
+    margin-top: 10px;
+    color: #888;
+    font-size: 0.9rem;
+    letter-spacing: 0.08em;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 20px;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+  .card {
+    display: block;
+    background: #12121e;
+    border: 1px solid #2a2a44;
+    border-radius: 10px;
+    padding: 28px 20px 24px;
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 0.2s, transform 0.15s, box-shadow 0.2s;
+    text-align: center;
+  }
+  .card:hover {
+    border-color: #7df9ff;
+    transform: translateY(-3px);
+    box-shadow: 0 6px 24px #7df9ff22;
+  }
+  .card .icon { font-size: 2.4rem; margin-bottom: 12px; }
+  .card .name {
+    font-size: 1rem;
+    font-weight: bold;
+    letter-spacing: 0.12em;
+    color: #c8c8ff;
+  }
+  footer {
+    text-align: center;
+    margin-top: 60px;
+    color: #444;
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>CRAWLER GAMES</h1>
+  <p>pick a game and play</p>
+</header>
+
+<div class="grid">
+  <a class="card" href="built/c48ba976a043.html">
+    <div class="icon">⚒️</div>
+    <div class="name">TAP FORGE</div>
+  </a>
+  <a class="card" href="built/c48ba977bae1.html">
+    <div class="icon">🌊</div>
+    <div class="name">NEON CASCADE</div>
+  </a>
+  <a class="card" href="built/c48ba9786038.html">
+    <div class="icon">💨</div>
+    <div class="name">VOID DASH</div>
+  </a>
+  <a class="card" href="orbital-harvest.html">
+    <div class="icon">🪐</div>
+    <div class="name">ORBITAL HARVEST</div>
+  </a>
+  <a class="card" href="bubble-drift/bubble-drift.html">
+    <div class="icon">🫧</div>
+    <div class="name">BUBBLE DRIFT</div>
+  </a>
+  <a class="card" href="pipe-dream/pipe-dream.html">
+    <div class="icon">🔧</div>
+    <div class="name">PIPE DREAM</div>
+  </a>
+  <a class="card" href="finger-skateboard/finger-skateboard.html">
+    <div class="icon">🛹</div>
+    <div class="name">FINGERBOARD</div>
+  </a>
+  <a class="card" href="voltage/voltage.html">
+    <div class="icon">⚡</div>
+    <div class="name">VOLTAGE</div>
+  </a>
+  <a class="card" href="echolocate/echolocate_v4.html">
+    <div class="icon">🔊</div>
+    <div class="name">ECHOLOCATE</div>
+  </a>
+</div>
+
+<footer>crawler-games &mdash; 2026</footer>
+</body>
+</html>
