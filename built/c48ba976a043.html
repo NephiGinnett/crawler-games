@@ -18,7 +18,8 @@ body {
   width: 100%; background: #1a1a1a; border-bottom: 1px solid #ff6b1a33;
   padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;
 }
-#coins-display { font-size: 1.1rem; color: #ffd700; font-weight: bold; }
+#coins-display { font-size: 1.1rem; color: #ffd700; font-weight: bold; transition: text-shadow 0.2s; }
+#coins-display.pulse { text-shadow: 0 0 12px #ffd700cc; }
 #income-display { font-size: 0.75rem; color: #ff6b1a; }
 #prestige-display { font-size: 0.75rem; color: #bf6fff; display: none; }
 #grid-area {
@@ -29,12 +30,12 @@ body {
 .slot {
   aspect-ratio: 1; background: #1a1a1a; border: 1px solid #333; border-radius: 10px;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  position: relative; cursor: pointer; overflow: hidden;
+  position: relative; cursor: pointer; overflow: hidden; transition: border-color 0.15s, background 0.15s;
 }
 .slot.empty { border-style: dashed; border-color: #2a2a2a; }
 .slot.has-item { border-color: #ff6b1a44; }
 .slot.drag-over { border-color: #ff6b1a; background: #1f1008; }
-.slot .item-emoji { font-size: 2rem; line-height: 1; }
+.slot .item-emoji { font-size: 2rem; line-height: 1; transition: transform 0.15s; }
 .slot .item-tier { font-size: 0.55rem; color: #888; margin-top: 2px; text-transform: uppercase; }
 .slot .item-glow { position: absolute; inset: 0; border-radius: 10px; pointer-events: none; }
 .slot.tier-1 .item-glow { background: radial-gradient(circle at center, #88441122, transparent 70%); }
@@ -47,8 +48,10 @@ body {
 .slot.tier-8 .item-glow { background: radial-gradient(circle at center, #8855ff66, transparent 70%); }
 .slot.tier-9 .item-glow { background: radial-gradient(circle at center, #ff44cc66, transparent 70%); }
 .slot.tier-10 .item-glow { background: radial-gradient(circle at center, #ffffff88, transparent 70%); }
+.slot.merge-pop .item-emoji { transform: scale(1.4); }
 #bottom-area {
-  width: 100%; padding: 12px 16px 20px; display: flex; flex-direction: column;
+  width: 100%;
+  padding: 12px 16px 20px; display: flex; flex-direction: column;
   align-items: center; gap: 10px; flex-shrink: 0;
 }
 #anvil-btn {
@@ -57,9 +60,26 @@ body {
   font-size: 2.8rem; cursor: pointer;
   box-shadow: 0 0 20px #ff6b1a66, 0 0 40px #ff6b1a22;
   display: flex; align-items: center; justify-content: center; line-height: 1;
-  transition: transform 0.1s;
+  transition: transform 0.1s, box-shadow 0.1s;
 }
 #anvil-btn:active { transform: scale(0.92); }
+#anvil-btn.hot { box-shadow: 0 0 30px #ff6b1aaa, 0 0 60px #ff6b1a44; }
+#upgrade-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; }
+#autoforge-btn {
+  padding: 7px 14px;
+  background: #1a1a1a; border: 1px solid #ff6b1a88;
+  border-radius: 16px; color: #ff6b1a; font-size: 0.78rem; cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+#autoforge-btn:hover { background: #2a1500; border-color: #ff6b1a; }
+#autoforge-btn.active { background: #2a1500; border-color: #ff6b1a; color: #ffd700; }
+#lucky-btn {
+  padding: 7px 14px;
+  background: #1a1a1a; border: 1px solid #bf6fff88;
+  border-radius: 16px; color: #bf6fff; font-size: 0.78rem; cursor: pointer;
+  transition: background 0.2s;
+}
+#lucky-btn:hover { background: #1a0a2a; }
 #prestige-btn {
   display: none; padding: 8px 20px;
   background: linear-gradient(135deg, #3d1a6e, #6a2da0);
@@ -71,12 +91,18 @@ body {
   position: fixed; font-size: 0.85rem; font-weight: bold; color: #ffd700;
   pointer-events: none; z-index: 200; animation: float-up 1.2s ease-out forwards;
 }
+.float-merge {
+  font-size: 1.1rem; font-weight: bold;
+  pointer-events: none; z-index: 200;
+  position: fixed; animation: float-merge 1.5s ease-out forwards;
+}
 @keyframes float-up { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-50px); } }
+@keyframes float-merge { 0% { opacity: 1; transform: translateY(0) scale(1); } 40% { opacity: 1; transform: translateY(-20px) scale(1.2); } 100% { opacity: 0; transform: translateY(-60px) scale(0.8); } }
 .shaking { animation: shake 0.3s ease; }
 @keyframes shake {
   0%,100% { transform: translate(0,0); }
-  20% { transform: translate(-4px,2px); } 40% { transform: translate(4px,-2px); }
-  60% { transform: translate(-3px,3px); } 80% { transform: translate(3px,-1px); }
+  20% { transform: translate(-5px,3px); } 40% { transform: translate(5px,-3px); }
+  60% { transform: translate(-4px,4px); } 80% { transform: translate(4px,-2px); }
 }
 #start-screen {
   position: fixed; inset: 0; background: #0d0d0d;
@@ -115,162 +141,346 @@ body {
   <div id="bottom-area">
     <div class="hint">Drag items to merge • Tap item to sell</div>
     <button id="anvil-btn">⚒️</button>
+    <div id="upgrade-row">
+      <button id="autoforge-btn">⚙️ Auto-Forge (500🪙)</button>
+      <button id="lucky-btn">🍀 Lucky Forge (200🪙)</button>
+    </div>
     <button id="prestige-btn">✨ PRESTIGE (x1.5 forever)</button>
   </div>
 </div>
 <script>
+// ── Audio ──────────────────────────────────────────────────────
+let audioCtx = null;
+function getAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+function playTone(freq, type, duration, vol=0.2, fadeStart=0.05) {
+  try {
+    const ctx = getAudio();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = type; osc.frequency.setValueAtTime(freq, ctx.currentTime);
+    gain.gain.setValueAtTime(vol, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + duration);
+  } catch(e){}
+}
+function sfxForge() { playTone(220, 'square', 0.12, 0.15); }
+function sfxSell()  { playTone(440, 'sine', 0.2, 0.12); playTone(550, 'sine', 0.2, 0.08); }
+function sfxMerge(tier) {
+  const freq = 180 + tier * 40;
+  playTone(freq, 'sawtooth', 0.08, 0.2);
+  setTimeout(() => playTone(freq * 1.5, 'sine', 0.25, 0.18), 80);
+}
+function sfxPrestige() {
+  [300,400,500,700,900].forEach((f,i) => setTimeout(() => playTone(f,'sine',0.3,0.12), i*80));
+}
+
+// ── Tiers ──────────────────────────────────────────────────────
 const TIERS=[null,
   {name:'Ore',emoji:'🪨'},{name:'Ingot',emoji:'🔶'},{name:'Dagger',emoji:'🗡️'},
   {name:'Sword',emoji:'⚔️'},{name:'Shield',emoji:'🛡️'},{name:'Axe',emoji:'🪓'},
   {name:'Staff',emoji:'🔮'},{name:'Relic',emoji:'🏺'},{name:'Crown',emoji:'👑'},
   {name:'Legendary',emoji:'🌟'}
 ];
-const ROWS=6,COLS=4,TOTAL=ROWS*COLS;
-let coins=0,prestigeMulti=1,prestigeCount=0;
-let grid=Array(TOTAL).fill(null);
-let dragState=null,lastTime=0;
+const MERGE_COLORS=['#ff6b1a','#ffcc00','#88ff44','#44ffcc','#44aaff','#8844ff','#ff44cc','#ff88ff','#ffffff'];
 
+const ROWS=6, COLS=4, TOTAL=ROWS*COLS;
+let coins=0, prestigeMulti=1, prestigeCount=0;
+let grid=Array(TOTAL).fill(null);
+let dragState=null, lastTime=0;
+
+// Upgrades
+let autoForgeLevel=0, luckyForgeUnlocked=false;
+let autoForgeTimer=0;
+const AUTO_FORGE_INTERVAL=3.5; // seconds between auto-forges at level 1
+
+// Canvas
 const canvas=document.getElementById('particles');
 const ctx=canvas.getContext('2d');
 let particles=[];
-function resizeCanvas(){canvas.width=window.innerWidth;canvas.height=window.innerHeight;}
-resizeCanvas();window.addEventListener('resize',resizeCanvas);
+function resizeCanvas(){ canvas.width=window.innerWidth; canvas.height=window.innerHeight; }
+resizeCanvas(); window.addEventListener('resize', resizeCanvas);
 
-function spawnSparks(x,y,color='#ff6b1a',n=12){
+function spawnSparks(x, y, color='#ff6b1a', n=12){
   for(let i=0;i<n;i++){
-    const a=Math.random()*Math.PI*2,s=1+Math.random()*4;
-    particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-1.5,life:1,decay:0.025+Math.random()*0.04,size:2+Math.random()*3,color});
+    const a=Math.random()*Math.PI*2, s=1.5+Math.random()*5;
+    particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-2,life:1,decay:0.022+Math.random()*0.04,size:2+Math.random()*3.5,color});
+  }
+}
+function spawnRing(x, y, color, n=20){
+  for(let i=0;i<n;i++){
+    const a=(i/n)*Math.PI*2, s=3+Math.random()*3;
+    particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,decay:0.028+Math.random()*0.02,size:3+Math.random()*2,color});
   }
 }
 function updateParticles(dt){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   particles=particles.filter(p=>p.life>0);
   for(const p of particles){
-    p.x+=p.vx*dt*60;p.y+=p.vy*dt*60;p.vy+=0.12*dt*60;p.life-=p.decay*dt*60;
-    ctx.globalAlpha=Math.max(0,p.life);ctx.fillStyle=p.color;
-    ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();
+    p.x+=p.vx*dt*60; p.y+=p.vy*dt*60; p.vy+=0.1*dt*60; p.life-=p.decay*dt*60;
+    ctx.globalAlpha=Math.max(0,p.life); ctx.fillStyle=p.color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,Math.PI*2); ctx.fill();
   }
   ctx.globalAlpha=1;
 }
 
+// Grid
 const gridEl=document.getElementById('grid');
 const slots=[];
 function buildGrid(){
-  gridEl.innerHTML='';slots.length=0;
+  gridEl.innerHTML=''; slots.length=0;
   for(let i=0;i<TOTAL;i++){
     const s=document.createElement('div');
-    s.className='slot empty';s.dataset.index=i;
+    s.className='slot empty'; s.dataset.index=i;
     s.innerHTML='<div class="item-emoji"></div><div class="item-tier"></div><div class="item-glow"></div>';
-    gridEl.appendChild(s);slots.push(s);
+    gridEl.appendChild(s); slots.push(s);
   }
 }
 function renderGrid(){
   let hasHigh=false;
   for(let i=0;i<TOTAL;i++){
-    const t=grid[i],s=slots[i];
-    if(t===null){s.className='slot empty';s.querySelector('.item-emoji').textContent='';s.querySelector('.item-tier').textContent='';}
+    const t=grid[i], s=slots[i];
+    if(t===null){ s.className='slot empty'; s.querySelector('.item-emoji').textContent=''; s.querySelector('.item-tier').textContent=''; }
     else{
       s.className='slot has-item tier-'+t;
       s.querySelector('.item-emoji').textContent=TIERS[t].emoji;
       s.querySelector('.item-tier').textContent=TIERS[t].name;
-      if(t>=8)hasHigh=true;
+      if(t>=8) hasHigh=true;
     }
   }
   document.getElementById('prestige-btn').style.display=hasHigh?'block':'none';
 }
-function sellVal(t){return Math.pow(1.5,t)*prestigeMulti;}
-function idleIncome(){let r=0;for(let i=0;i<TOTAL;i++)if(grid[i])r+=sellVal(grid[i])*0.05;return r;}
+function sellVal(t){ return Math.pow(1.5,t)*prestigeMulti; }
+function idleIncome(){ let r=0; for(let i=0;i<TOTAL;i++) if(grid[i]) r+=sellVal(grid[i])*0.05; return r; }
+
 function updateBar(){
-  document.getElementById('coins-display').textContent='🪙 '+Math.floor(coins).toLocaleString();
+  const coinEl=document.getElementById('coins-display');
+  coinEl.textContent='🪙 '+Math.floor(coins).toLocaleString();
   document.getElementById('income-display').textContent='+'+idleIncome().toFixed(2)+'/sec idle';
-  if(prestigeCount>0){document.getElementById('prestige-display').style.display='block';document.getElementById('prestige-display').textContent='✨ x'+prestigeMulti.toFixed(2);}
+  if(prestigeCount>0){
+    document.getElementById('prestige-display').style.display='block';
+    document.getElementById('prestige-display').textContent='✨ x'+prestigeMulti.toFixed(2);
+  }
+  updateUpgradeBtns();
 }
-function firstEmpty(){for(let i=0;i<TOTAL;i++)if(grid[i]===null)return i;return -1;}
-function floatText(txt,x,y){
-  const e=document.createElement('div');e.className='float-text';e.textContent=txt;
-  e.style.left=(x-20)+'px';e.style.top=(y-10)+'px';document.body.appendChild(e);
-  setTimeout(()=>e.remove(),1300);
+
+function updateUpgradeBtns(){
+  const autoBtn=document.getElementById('autoforge-btn');
+  const luckyBtn=document.getElementById('lucky-btn');
+  if(autoForgeLevel===0){
+    autoBtn.textContent='⚙️ Auto-Forge (500🪙)';
+    autoBtn.classList.remove('active');
+    autoBtn.disabled=coins<500;
+  } else if(autoForgeLevel===1){
+    autoBtn.textContent='⚙️ Upgrade Auto (2000🪙)';
+    autoBtn.classList.add('active');
+    autoBtn.disabled=coins<2000;
+  } else {
+    autoBtn.textContent='⚙️ Auto MAX ✓';
+    autoBtn.classList.add('active');
+    autoBtn.disabled=true;
+  }
+  if(luckyForgeUnlocked){
+    luckyBtn.textContent='🍀 Lucky ON ✓';
+    luckyBtn.disabled=true;
+  } else {
+    luckyBtn.textContent='🍀 Lucky Forge (200🪙)';
+    luckyBtn.disabled=coins<200;
+  }
 }
-function forgeItem(x,y){
-  const idx=firstEmpty();if(idx===-1)return;
-  grid[idx]=1;renderGrid();spawnSparks(x,y,'#ff6b1a',12);
+
+function firstEmpty(){ for(let i=0;i<TOTAL;i++) if(grid[i]===null) return i; return -1; }
+
+function floatText(txt, x, y, cls='float-text', color=''){
+  const e=document.createElement('div');
+  e.className=cls; e.textContent=txt;
+  if(color) e.style.color=color;
+  e.style.left=(x-20)+'px'; e.style.top=(y-10)+'px';
+  document.body.appendChild(e);
+  setTimeout(()=>e.remove(), 1500);
+}
+
+function forgeItem(x, y){
+  const idx=firstEmpty(); if(idx===-1) return;
+  // Lucky Forge: 15% chance for tier-2 if unlocked
+  const tier=(luckyForgeUnlocked && Math.random()<0.15) ? 2 : 1;
+  grid[idx]=tier; renderGrid();
+  spawnSparks(x,y,'#ff6b1a',14);
+  sfxForge();
   const a=document.getElementById('anvil-btn');
-  a.style.transform='scale(0.88)';setTimeout(()=>a.style.transform='',120);
+  a.style.transform='scale(0.88)'; setTimeout(()=>a.style.transform='',120);
+  if(tier===2) floatText('⚡ Lucky!', x, y-30, 'float-text', '#ffd700');
 }
-function sellItem(idx,x,y){
-  const t=grid[idx];if(t===null)return;
-  const v=sellVal(t);coins+=v;floatText('+'+Math.floor(v)+' 🪙',x,y);
-  grid[idx]=null;renderGrid();updateBar();
+
+function sellItem(idx, x, y){
+  const t=grid[idx]; if(t===null) return;
+  const v=sellVal(t); coins+=v;
+  floatText('+'+Math.floor(v)+' 🪙', x, y);
+  spawnSparks(x, y, '#ffd700', 8);
+  sfxSell();
+  grid[idx]=null; renderGrid(); updateBar();
 }
-function mergeItems(from,to){
-  if(grid[from]===null||grid[to]===null||from===to||grid[from]!==grid[to])return false;
+
+function mergePop(slotIdx){
+  const s=slots[slotIdx];
+  s.classList.add('merge-pop');
+  setTimeout(()=>s.classList.remove('merge-pop'), 200);
+}
+
+function mergeItems(from, to){
+  if(grid[from]===null||grid[to]===null||from===to||grid[from]!==grid[to]) return false;
   const t=grid[from];
-  if(t>=10){const v=sellVal(t)*2;coins+=v;const r=slots[to].getBoundingClientRect();floatText('+'+Math.floor(v)+' 🪙',r.left+r.width/2,r.top);grid[from]=null;grid[to]=null;}
-  else{grid[from]=null;grid[to]=t+1;}
+  if(t>=10){
+    const v=sellVal(t)*2; coins+=v;
+    const r=slots[to].getBoundingClientRect();
+    floatText('+'+Math.floor(v)+' 🪙', r.left+r.width/2, r.top);
+    grid[from]=null; grid[to]=null;
+  } else {
+    grid[from]=null; grid[to]=t+1;
+    setTimeout(()=>mergePop(to), 50);
+  }
+  // Screen shake
   const ss=document.getElementById('screen-shake');
-  ss.classList.remove('shaking');void ss.offsetWidth;ss.classList.add('shaking');
-  setTimeout(()=>ss.classList.remove('shaking'),350);
+  ss.classList.remove('shaking'); void ss.offsetWidth; ss.classList.add('shaking');
+  setTimeout(()=>ss.classList.remove('shaking'), 350);
+  // Particles — more for higher tiers
   const r=slots[to].getBoundingClientRect();
-  const colors=['#ff6b1a','#ffcc00','#88ff44','#44ffcc','#44aaff','#8844ff','#ff44cc','#ff88ff','#ffffff'];
-  spawnSparks(r.left+r.width/2,r.top+r.height/2,colors[Math.min(t-1,colors.length-1)],22);
-  renderGrid();updateBar();return true;
+  const cx=r.left+r.width/2, cy=r.top+r.height/2;
+  const color=MERGE_COLORS[Math.min(t-1, MERGE_COLORS.length-1)];
+  spawnSparks(cx, cy, color, 16 + t*3);
+  if(t>=5) spawnRing(cx, cy, color, 18);
+  // Merge label
+  const newTier=Math.min(t+1,10);
+  floatText(`${TIERS[newTier].emoji} ${TIERS[newTier].name}!`, cx, cy-30, 'float-merge', color);
+  sfxMerge(t);
+  renderGrid(); updateBar();
+  return true;
 }
-function getSlotAt(x,y){
-  const el=document.elementFromPoint(x,y);if(!el)return -1;
-  const s=el.closest('.slot');if(!s)return -1;return parseInt(s.dataset.index);
+
+function getSlotAt(x, y){
+  const el=document.elementFromPoint(x,y); if(!el) return -1;
+  const s=el.closest('.slot'); if(!s) return -1;
+  return parseInt(s.dataset.index);
 }
-function startDrag(idx,cx,cy){
-  if(grid[idx]===null)return;
-  const t=grid[idx],r=slots[idx].getBoundingClientRect();
+
+function startDrag(idx, cx, cy){
+  if(grid[idx]===null) return;
+  const t=grid[idx], r=slots[idx].getBoundingClientRect();
   const clone=document.createElement('div');
-  clone.style.cssText=`position:fixed;z-index:500;pointer-events:none;width:${r.width}px;height:${r.height}px;background:#2a1500;border:2px solid #ff6b1a;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:2rem;opacity:0.9;box-shadow:0 0 20px #ff6b1a88;transform:scale(1.1);`;
-  clone.textContent=TIERS[t].emoji;document.body.appendChild(clone);
-  const ox=cx-r.left,oy=cy-r.top;
-  clone.style.left=(cx-ox)+'px';clone.style.top=(cy-oy)+'px';
+  clone.style.cssText=`position:fixed;z-index:500;pointer-events:none;width:${r.width}px;height:${r.height}px;background:#2a1500;border:2px solid #ff6b1a;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:2rem;opacity:0.92;box-shadow:0 0 24px #ff6b1a99;transform:scale(1.12);`;
+  clone.textContent=TIERS[t].emoji; document.body.appendChild(clone);
+  const ox=cx-r.left, oy=cy-r.top;
+  clone.style.left=(cx-ox)+'px'; clone.style.top=(cy-oy)+'px';
   dragState={fromIndex:idx,clone,ox,oy,moved:false,startX:cx,startY:cy};
-  slots[idx].style.opacity='0.35';
+  slots[idx].style.opacity='0.3';
 }
-function moveDrag(cx,cy){
-  if(!dragState)return;
-  const dx=cx-dragState.startX,dy=cy-dragState.startY;
-  if(Math.abs(dx)>5||Math.abs(dy)>5)dragState.moved=true;
-  dragState.clone.style.left=(cx-dragState.ox)+'px';dragState.clone.style.top=(cy-dragState.oy)+'px';
+function moveDrag(cx, cy){
+  if(!dragState) return;
+  const dx=cx-dragState.startX, dy=cy-dragState.startY;
+  if(Math.abs(dx)>6||Math.abs(dy)>6) dragState.moved=true;
+  dragState.clone.style.left=(cx-dragState.ox)+'px'; dragState.clone.style.top=(cy-dragState.oy)+'px';
   slots.forEach(s=>s.classList.remove('drag-over'));
   const to=getSlotAt(cx,cy);
-  if(to!==-1&&to!==dragState.fromIndex&&grid[to]===grid[dragState.fromIndex])slots[to].classList.add('drag-over');
+  if(to!==-1&&to!==dragState.fromIndex&&grid[to]===grid[dragState.fromIndex]) slots[to].classList.add('drag-over');
 }
-function endDrag(cx,cy){
-  if(!dragState)return;
+function endDrag(cx, cy){
+  if(!dragState) return;
   const{fromIndex,clone,moved}=dragState;
-  clone.remove();slots.forEach(s=>s.classList.remove('drag-over'));slots[fromIndex].style.opacity='';
+  clone.remove(); slots.forEach(s=>s.classList.remove('drag-over')); slots[fromIndex].style.opacity='';
   const to=getSlotAt(cx,cy);
-  if(!moved){const r=slots[fromIndex].getBoundingClientRect();sellItem(fromIndex,r.left+r.width/2,r.top);}
-  else if(to!==-1&&to!==fromIndex){
-    if(!mergeItems(fromIndex,to)&&grid[to]===null){grid[to]=grid[fromIndex];grid[fromIndex]=null;renderGrid();}
+  if(!moved){
+    const r=slots[fromIndex].getBoundingClientRect();
+    sellItem(fromIndex, r.left+r.width/2, r.top);
+  } else if(to!==-1&&to!==fromIndex){
+    if(!mergeItems(fromIndex,to)&&grid[to]===null){ grid[to]=grid[fromIndex]; grid[fromIndex]=null; renderGrid(); }
   }
   dragState=null;
 }
-gridEl.addEventListener('mousedown',e=>{const s=e.target.closest('.slot');if(s)startDrag(parseInt(s.dataset.index),e.clientX,e.clientY);e.preventDefault();});
-window.addEventListener('mousemove',e=>{if(dragState)moveDrag(e.clientX,e.clientY);});
-window.addEventListener('mouseup',e=>{endDrag(e.clientX,e.clientY);});
-gridEl.addEventListener('touchstart',e=>{const t=e.touches[0];const s=e.target.closest('.slot');if(s)startDrag(parseInt(s.dataset.index),t.clientX,t.clientY);e.preventDefault();},{passive:false});
-window.addEventListener('touchmove',e=>{if(!dragState)return;moveDrag(e.touches[0].clientX,e.touches[0].clientY);e.preventDefault();},{passive:false});
-window.addEventListener('touchend',e=>{if(!dragState)return;const t=e.changedTouches[0];endDrag(t.clientX,t.clientY);});
-document.getElementById('anvil-btn').addEventListener('click',e=>{forgeItem(e.clientX,e.clientY);updateBar();});
-document.getElementById('anvil-btn').addEventListener('touchend',e=>{const t=e.changedTouches[0];forgeItem(t.clientX,t.clientY);updateBar();e.preventDefault();});
-document.getElementById('prestige-btn').addEventListener('click',()=>{
-  if(!confirm('Prestige? Resets grid, gives permanent x1.5 multiplier!'))return;
-  prestigeCount++;prestigeMulti=Math.pow(1.5,prestigeCount);
-  grid=Array(TOTAL).fill(null);renderGrid();updateBar();
+
+// Grid events
+gridEl.addEventListener('mousedown',e=>{ const s=e.target.closest('.slot'); if(s) startDrag(parseInt(s.dataset.index),e.clientX,e.clientY); e.preventDefault(); });
+window.addEventListener('mousemove',e=>{ if(dragState) moveDrag(e.clientX,e.clientY); });
+window.addEventListener('mouseup',e=>{ endDrag(e.clientX,e.clientY); });
+gridEl.addEventListener('touchstart',e=>{ const t=e.touches[0]; const s=e.target.closest('.slot'); if(s) startDrag(parseInt(s.dataset.index),t.clientX,t.clientY); e.preventDefault(); },{passive:false});
+window.addEventListener('touchmove',e=>{ if(!dragState)return; moveDrag(e.touches[0].clientX,e.touches[0].clientY); e.preventDefault(); },{passive:false});
+window.addEventListener('touchend',e=>{ if(!dragState)return; const t=e.changedTouches[0]; endDrag(t.clientX,t.clientY); });
+
+// Anvil — guard against double-fire on mobile (touchend fires before click)
+let anvilTouchFired=false;
+const anvilBtn=document.getElementById('anvil-btn');
+anvilBtn.addEventListener('touchend',e=>{
+  const t=e.changedTouches[0]; forgeItem(t.clientX,t.clientY); updateBar();
+  anvilTouchFired=true; setTimeout(()=>anvilTouchFired=false,300);
+  e.preventDefault();
 });
+anvilBtn.addEventListener('click',e=>{ if(anvilTouchFired) return; forgeItem(e.clientX,e.clientY); updateBar(); });
+
+// Auto-Forge upgrade
+document.getElementById('autoforge-btn').addEventListener('click',()=>{
+  if(autoForgeLevel===0 && coins>=500){ coins-=500; autoForgeLevel=1; updateBar(); floatText('⚙️ Auto-Forge ON!',window.innerWidth/2,window.innerHeight/2,'float-merge','#ff6b1a'); }
+  else if(autoForgeLevel===1 && coins>=2000){ coins-=2000; autoForgeLevel=2; updateBar(); floatText('⚙️ Auto-Forge MAX!',window.innerWidth/2,window.innerHeight/2,'float-merge','#ffd700'); }
+});
+// Lucky Forge upgrade
+document.getElementById('lucky-btn').addEventListener('click',()=>{
+  if(!luckyForgeUnlocked && coins>=200){ coins-=200; luckyForgeUnlocked=true; updateBar(); floatText('🍀 Lucky ON!',window.innerWidth/2,window.innerHeight/2,'float-merge','#88ff44'); }
+});
+
+// Prestige
+document.getElementById('prestige-btn').addEventListener('click',()=>{
+  if(!confirm('Prestige? Resets grid, gives permanent x1.5 multiplier!')) return;
+  sfxPrestige();
+  prestigeCount++; prestigeMulti=Math.pow(1.5,prestigeCount);
+  grid=Array(TOTAL).fill(null); renderGrid(); updateBar();
+  // Big particle burst
+  spawnRing(window.innerWidth/2, window.innerHeight/2, '#bf6fff', 40);
+  spawnSparks(window.innerWidth/2, window.innerHeight/2, '#bf6fff', 30);
+});
+
+// Start
 document.getElementById('start-btn').addEventListener('click',()=>{
   document.getElementById('start-screen').style.display='none';
-  grid[0]=1;grid[1]=1;renderGrid();updateBar();
-  lastTime=performance.now();requestAnimationFrame(loop);
+  // Start with 3 items for a less empty feel
+  grid[0]=1; grid[1]=1; grid[2]=1; renderGrid(); updateBar();
+  lastTime=performance.now(); requestAnimationFrame(loop);
 });
+
+// Idle coins pulse feedback
+let lastCoinFloor=0;
 function loop(now){
-  const dt=Math.min((now-lastTime)/1000,0.1);lastTime=now;
-  coins+=idleIncome()*dt;updateBar();updateParticles(dt);
+  const dt=Math.min((now-lastTime)/1000, 0.1); lastTime=now;
+  coins+=idleIncome()*dt;
+
+  // Auto-Forge
+  if(autoForgeLevel>0){
+    autoForgeTimer+=dt;
+    const interval=autoForgeLevel===1 ? AUTO_FORGE_INTERVAL : AUTO_FORGE_INTERVAL*0.45;
+    if(autoForgeTimer>=interval){
+      autoForgeTimer=0;
+      const idx=firstEmpty();
+      if(idx!==-1){
+        const rect=slots[idx].getBoundingClientRect();
+        forgeItem(rect.left+rect.width/2, rect.top+rect.height/2);
+        updateBar();
+      }
+    }
+    // Pulse anvil when auto-forge active
+    const pct=(autoForgeTimer / (autoForgeLevel===1?AUTO_FORGE_INTERVAL:AUTO_FORGE_INTERVAL*0.45));
+    anvilBtn.classList.toggle('hot', pct>0.7);
+  }
+
+  // Coins pulse every 10 earned
+  const cf=Math.floor(coins/10);
+  if(cf!==lastCoinFloor){
+    lastCoinFloor=cf;
+    const coinEl=document.getElementById('coins-display');
+    coinEl.classList.add('pulse'); setTimeout(()=>coinEl.classList.remove('pulse'),200);
+  }
+
+  updateBar();
+  updateParticles(dt);
   requestAnimationFrame(loop);
 }
 buildGrid();
