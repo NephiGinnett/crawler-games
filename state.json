@@ -24,10 +24,10 @@
       "id": "c48ba976a043",
       "userScore": null,
       "userFeedback": "",
-      "status": "idea",
+      "status": "built",
       "createdAt": "2026-06-14T05:11:12Z",
-      "builtAt": null,
-      "htmlFile": null,
+      "builtAt": "2026-06-15T06:14:34Z",
+      "htmlFile": "built/c48ba976a043.html",
       "refinements": []
     },
     {
@@ -54,10 +54,10 @@
       "id": "c48ba977bae1",
       "userScore": null,
       "userFeedback": "",
-      "status": "idea",
+      "status": "built",
       "createdAt": "2026-06-14T05:11:12Z",
-      "builtAt": null,
-      "htmlFile": null,
+      "builtAt": "2026-06-15T06:14:34Z",
+      "htmlFile": "built/c48ba977bae1.html",
       "refinements": []
     },
     {
@@ -174,10 +174,10 @@
       "id": "c9b771c0cd2c",
       "userScore": null,
       "userFeedback": "",
-      "status": "idea",
+      "status": "built",
       "createdAt": "2026-06-15T05:18:23Z",
-      "builtAt": null,
-      "htmlFile": null,
+      "builtAt": "2026-06-15T06:14:34Z",
+      "htmlFile": "built/c9b771c0cd2c.html",
       "refinements": []
     },
     {
@@ -304,7 +304,7 @@
   "cycle": {
     "startHour": 5,
     "startMinute": 0,
-    "currentStage": 1,
+    "currentStage": 2,
     "lastRun": "2026-06-15T05:18:23Z",
     "history": [
       {
@@ -316,6 +316,11 @@
         "stage": 1,
         "completedAt": "2026-06-15T05:18:23Z",
         "summary": "Generated 5 ideas: Overload, Pulse Grid, Shard Ascent, Rift Keeper, Hex Bloom"
+      },
+      {
+        "stage": 2,
+        "completedAt": "2026-06-15T06:14:34Z",
+        "summary": "Built: Tap Forge, Neon Cascade, Overload"
       }
     ]
   }
