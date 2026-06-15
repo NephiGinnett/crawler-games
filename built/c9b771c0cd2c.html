@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Overload</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; touch-action: none; }
+body { background: #080810; color: #fff; font-family: 'Segoe UI', Arial, sans-serif; overflow: hidden; user-select: none; }
+canvas { display: block; }
+#hud {
+  position: fixed; top: 0; left: 0; right: 0;
+  padding: 10px 16px; display: flex; justify-content: space-between; align-items: flex-start;
+  pointer-events: none; z-index: 10;
+}
+#score-box { font-size: 1.4rem; font-weight: bold; color: #00ffe0; text-shadow: 0 0 10px #00ffe0; }
+#idle-box { font-size: 0.75rem; color: #00ffe088; margin-top: 2px; }
+#upgrade-panel {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: #0c0c1a; border-top: 1px solid #00ffe022;
+  padding: 10px 12px; display: flex; gap: 8px; z-index: 10; overflow-x: auto;
+}
+.upg-btn {
+  flex-shrink: 0; background: #111122; border: 1px solid #00ffe044;
+  border-radius: 8px; padding: 8px 10px; cursor: pointer; text-align: center; min-width: 90px;
+}
+.upg-btn:active { background: #1a1a33; }
+.upg-name { font-size: 0.7rem; color: #00ffe0; font-weight: bold; }
+.upg-desc { font-size: 0.6rem; color: #666; margin-top: 2px; }
+.upg-cost { font-size: 0.75rem; color: #ffd700; margin-top: 4px; }
+.upg-btn.can-afford { border-color: #00ffe0; box-shadow: 0 0 8px #00ffe033; }
+#timer-bar { position: fixed; top: 60px; right: 16px; font-size: 0.7rem; color: #555; z-index: 10; pointer-events: none; }
+#combo-overlay {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  font-size: 2rem; font-weight: bold; color: #fff; text-shadow: 0 0 20px #00ffe0;
+  pointer-events: none; z-index: 50; opacity: 0;
+}
+#start-screen {
+  position: fixed; inset: 0; background: #080810;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  z-index: 1000; gap: 14px;
+}
+#start-screen h1 { font-size: 2.8rem; font-weight: bold; color: #00ffe0; text-shadow: 0 0 30px #00ffe0; }
+#start-screen p { color: #666; font-size: 0.9rem; text-align: center; max-width: 300px; line-height: 1.6; }
+#start-btn {
+  padding: 14px 44px; background: transparent; border: 2px solid #00ffe0;
+  border-radius: 30px; color: #00ffe0; font-size: 1.1rem; font-weight: bold; cursor: pointer;
+  box-shadow: 0 0 20px #00ffe044; margin-top: 8px;
+}
+#final-score {
+  position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
+  font-size: 0.75rem; color: #333; pointer-events: none; z-index: 10;
+  text-align: center; white-space: nowrap;
+}
+</style>
+</head>
+<body>
+<div id="start-screen">
+  <div style="font-size:3rem">⚡</div>
+  <h1>OVERLOAD</h1>
+  <p>Tap the reactor to spawn nodes. Nodes chain together — when a chain hits 5+ nodes it <strong style="color:#00ffe0">OVERLOADS</strong> in a cascade of light. Idle income trickles. Upgrade. Never stop.</p>
+  <button id="start-btn">ACTIVATE</button>
+</div>
+
+<canvas id="c"></canvas>
+<div id="hud">
+  <div>
+    <div id="score-box">0</div>
+    <div id="idle-box">+0/sec idle</div>
+  </div>
+  <div id="timer-bar">5:00 best</div>
+</div>
+<div id="combo-overlay"></div>
+<div id="final-score"></div>
+<div id="upgrade-panel">
+  <div class="upg-btn" id="upg-auto" onclick="buyUpgrade('auto')">
+    <div class="upg-name">AUTO NODE</div>
+    <div class="upg-desc">Spawns 1 node/3s</div>
+    <div class="upg-cost" id="upg-auto-cost">Cost: 100</div>
+  </div>
+  <div class="upg-btn" id="upg-multi" onclick="buyUpgrade('multi')">
+    <div class="upg-name">MULTIPLIER</div>
+    <div class="upg-desc">x1.5 per overload</div>
+    <div class="upg-cost" id="upg-multi-cost">Cost: 250</div>
+  </div>
+  <div class="upg-btn" id="upg-thresh" onclick="buyUpgrade('thresh')">
+    <div class="upg-name">LOWER CHAIN</div>
+    <div class="upg-desc">Trigger at fewer nodes</div>
+    <div class="upg-cost" id="upg-thresh-cost">Cost: 500</div>
+  </div>
+  <div class="upg-btn" id="upg-idle" onclick="buyUpgrade('idle')">
+    <div class="upg-name">IDLE BOOST</div>
+    <div class="upg-desc">+50% idle income</div>
+    <div class="upg-cost" id="upg-idle-cost">Cost: 200</div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = () => window.innerWidth, H = () => window.innerHeight;
+let cw, ch;
+function resize() { cw = canvas.width = W(); ch = canvas.height = H(); }
+resize(); window.addEventListener('resize', resize);
+
+const COLS = 12, ROWS = 20;
+let score = 0, lastTime = 0;
+let started = false;
+
+// Grid of nodes: null or {color, chain: null}
+let nodeGrid = {};
+function key(r, c) { return r+','+c; }
+
+// Colors for node types (visual variety)
+const NODE_COLORS = ['#00ffe0','#00ccff','#88ff00','#ff8800','#ff44cc'];
+let nodeColor = 0; // index, rotates
+
+// Upgrades
+let autoLevel = 0;       // 0=off, 1+=active
+let multiLevel = 0;      // stacks
+let chainThresh = 5;     // default trigger at 5
+let idleLevel = 0;       // idle boost level
+let autoTimer = 0;       // countdown for auto spawn
+
+const UPG_COSTS = { auto: 100, multi: 250, thresh: 500, idle: 200 };
+let upgCosts = { ...UPG_COSTS };
+
+// Reactor position: center
+let reactorX, reactorY;
+function setReactor() { reactorX = cw/2; reactorY = ch*0.5 - 40; }
+
+// Grid cell size
+let cellW, cellH, gridOffX, gridOffY;
+function setGrid() {
+  const panelH = 80;
+  const hudH = 60;
+  const avH = ch - panelH - hudH;
+  const avW = cw;
+  cellW = Math.floor(avW / COLS);
+  cellH = Math.floor(avH / ROWS);
+  gridOffX = Math.floor((avW - cellW * COLS) / 2);
+  gridOffY = hudH;
+}
+
+function cellCenter(r, c) {
+  return { x: gridOffX + c * cellW + cellW/2, y: gridOffY + r * cellH + cellH/2 };
+}
+
+function reactorCell() {
+  const c = Math.floor((reactorX - gridOffX) / cellW);
+  const r = Math.floor((reactorY - gridOffY) / cellH);
+  return { r: Math.max(0, Math.min(ROWS-1, r)), c: Math.max(0, Math.min(COLS-1, c)) };
+}
+
+// Particles / effects
+let particles = [];
+let floaters = [];
+let shockwaves = [];
+let flashAlpha = 0;
+
+function spawnParticles(x, y, color, n = 12) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, s = 2 + Math.random() * 5;
+    particles.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, life: 1, decay: 0.02+Math.random()*0.04, size: 2+Math.random()*4, color });
+  }
+}
+
+function spawnFloater(txt, x, y, color = '#00ffe0') {
+  floaters.push({ txt, x, y, life: 1, vy: -1.5, color });
+}
+
+function spawnShockwave(x, y, color) {
+  shockwaves.push({ x, y, r: 0, maxR: 120, life: 1, color });
+}
+
+// Find connected chain of same-colored nodes via BFS
+function findChain(startR, startC) {
+  const color = nodeGrid[key(startR, startC)];
+  if (!color) return [];
+  const visited = new Set();
+  const queue = [[startR, startC]];
+  visited.add(key(startR, startC));
+  while (queue.length) {
+    const [r, c] = queue.shift();
+    const neighbors = [[r-1,c],[r+1,c],[r,c-1],[r,c+1]];
+    for (const [nr, nc] of neighbors) {
+      const k = key(nr, nc);
+      if (!visited.has(k) && nodeGrid[k] === color && nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
+        visited.add(k);
+        queue.push([nr, nc]);
+      }
+    }
+  }
+  return [...visited].map(k => k.split(',').map(Number));
+}
+
+let overloadMulti = 1;
+
+function triggerOverload(chain) {
+  const mul = Math.pow(1.5, multiLevel) * overloadMulti;
+  const gained = Math.floor(chain.length * chain.length * 10 * mul);
+  score += gained;
+  const idleBonus = Math.pow(1.5, idleLevel);
+  // Flash
+  flashAlpha = 0.6;
+  // Shockwave at each node + particles
+  chain.forEach(([r, c]) => {
+    const pos = cellCenter(r, c);
+    spawnParticles(pos.x, pos.y, '#ffffff', 8);
+    spawnShockwave(pos.x, pos.y, '#00ffe0');
+  });
+  // Floater at center of chain
+  const cx = chain.reduce((s,[r,c]) => s + cellCenter(r,c).x, 0) / chain.length;
+  const cy = chain.reduce((s,[r,c]) => s + cellCenter(r,c).y, 0) / chain.length;
+  spawnFloater('+' + gained.toLocaleString(), cx, cy, '#00ffe0');
+  if (chain.length >= 8) showCombo('MEGA CHAIN x' + chain.length);
+  // Clear nodes
+  chain.forEach(([r,c]) => delete nodeGrid[key(r,c)]);
+}
+
+function showCombo(txt) {
+  const el = document.getElementById('combo-overlay');
+  el.textContent = txt; el.style.opacity = '1';
+  el.style.transition = 'none'; el.style.transform = 'translate(-50%,-50%) scale(1.3)';
+  setTimeout(() => {
+    el.style.transition = 'opacity 0.8s, transform 0.8s';
+    el.style.opacity = '0'; el.style.transform = 'translate(-50%,-50%) scale(1)';
+  }, 600);
+}
+
+function spawnNode(r, c) {
+  if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return;
+  if (nodeGrid[key(r,c)]) return;
+  const color = NODE_COLORS[nodeColor % NODE_COLORS.length];
+  nodeGrid[key(r,c)] = color;
+  const pos = cellCenter(r, c);
+  spawnParticles(pos.x, pos.y, color, 4);
+  // Check chains
+  const chain = findChain(r, c);
+  if (chain.length >= chainThresh) {
+    // Brief delay for visual effect
+    setTimeout(() => {
+      if (chain.every(([nr,nc]) => nodeGrid[key(nr,nc)])) triggerOverload(chain);
+    }, 150);
+  }
+}
+
+function spawnNearReactor() {
+  const rc = reactorCell();
+  const dirs = [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]];
+  // Shuffle and pick first empty
+  const shuffled = dirs.sort(() => Math.random() - 0.5);
+  for (const [dr, dc] of shuffled) {
+    const nr = rc.r + dr, nc = rc.c + dc;
+    if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && !nodeGrid[key(nr,nc)]) {
+      nodeColor++;
+      spawnNode(nr, nc);
+      return;
+    }
+  }
+  // Try random
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const nr = Math.floor(Math.random()*ROWS), nc = Math.floor(Math.random()*COLS);
+    if (!nodeGrid[key(nr,nc)]) { nodeColor++; spawnNode(nr, nc); return; }
+  }
+}
+
+function idleIncome() {
+  const count = Object.keys(nodeGrid).length;
+  return count * 0.5 * Math.pow(1.5, idleLevel);
+}
+
+// Upgrades
+function buyUpgrade(type) {
+  const cost = upgCosts[type];
+  if (score < cost) return;
+  score -= cost;
+  if (type === 'auto') { autoLevel++; autoTimer = 3; upgCosts.auto = Math.floor(cost * 2.5); }
+  if (type === 'multi') { multiLevel++; upgCosts.multi = Math.floor(cost * 2); }
+  if (type === 'thresh') { if (chainThresh > 3) { chainThresh--; upgCosts.thresh = Math.floor(cost * 3); } }
+  if (type === 'idle') { idleLevel++; upgCosts.idle = Math.floor(cost * 2); }
+  updateUpgUI();
+}
+
+function updateUpgUI() {
+  const ids = ['auto','multi','thresh','idle'];
+  ids.forEach(t => {
+    const cost = upgCosts[t];
+    const el = document.getElementById('upg-'+t+'-cost');
+    if (t === 'thresh' && chainThresh <= 3) { el.textContent = 'MAX'; document.getElementById('upg-'+t).style.opacity='0.4'; return; }
+    el.textContent = 'Cost: ' + cost.toLocaleString();
+    document.getElementById('upg-'+t).classList.toggle('can-afford', score >= cost);
+  });
+  document.getElementById('upg-auto-cost').textContent = autoLevel > 0 ? 'Lv'+autoLevel+' Cost:'+upgCosts.auto : 'Cost: '+upgCosts.auto;
+}
+
+// 5-minute timer
+let gameStartTime = 0;
+let bestScore = 0;
+
+function formatTime(ms) {
+  const s = Math.floor(ms/1000), m = Math.floor(s/60);
+  return m + ':' + String(s%60).padStart(2,'0');
+}
+
+// Main draw
+function draw() {
+  ctx.clearRect(0, 0, cw, ch);
+
+  // Background grid
+  ctx.strokeStyle = '#111122';
+  ctx.lineWidth = 0.5;
+  setGrid();
+  for (let r = 0; r <= ROWS; r++) {
+    ctx.beginPath();
+    ctx.moveTo(gridOffX, gridOffY + r*cellH);
+    ctx.lineTo(gridOffX + COLS*cellW, gridOffY + r*cellH);
+    ctx.stroke();
+  }
+  for (let c = 0; c <= COLS; c++) {
+    ctx.beginPath();
+    ctx.moveTo(gridOffX + c*cellW, gridOffY);
+    ctx.lineTo(gridOffX + c*cellW, gridOffY + ROWS*cellH);
+    ctx.stroke();
+  }
+
+  // Draw nodes
+  for (const [k, color] of Object.entries(nodeGrid)) {
+    const [r, c] = k.split(',').map(Number);
+    const pos = cellCenter(r, c);
+    const pulse = 0.85 + 0.15 * Math.sin(Date.now() * 0.004 + r + c);
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, (cellW/2 - 3) * pulse, 0, Math.PI*2);
+    ctx.fillStyle = color + '33';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, cellW/2 - 5, 0, Math.PI*2);
+    ctx.fillStyle = color;
+    ctx.shadowColor = color; ctx.shadowBlur = 10;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Draw connection lines to adjacent same-color nodes
+    [[0,1],[1,0]].forEach(([dr,dc]) => {
+      const nk = key(r+dr, c+dc);
+      if (nodeGrid[nk] === color) {
+        const npos = cellCenter(r+dr, c+dc);
+        ctx.beginPath();
+        ctx.moveTo(pos.x, pos.y); ctx.lineTo(npos.x, npos.y);
+        ctx.strokeStyle = color + '88'; ctx.lineWidth = 2;
+        ctx.shadowColor = color; ctx.shadowBlur = 4;
+        ctx.stroke(); ctx.shadowBlur = 0;
+      }
+    });
+  }
+
+  // Reactor
+  const rp = 0.85 + 0.15 * Math.sin(Date.now() * 0.003);
+  ctx.beginPath();
+  ctx.arc(reactorX, reactorY, 40 * rp, 0, Math.PI*2);
+  ctx.fillStyle = '#00ffe011';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(reactorX, reactorY, 28, 0, Math.PI*2);
+  ctx.fillStyle = '#00ffe022';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(reactorX, reactorY, 18, 0, Math.PI*2);
+  ctx.fillStyle = '#00ffe0';
+  ctx.shadowColor = '#00ffe0'; ctx.shadowBlur = 20;
+  ctx.fill(); ctx.shadowBlur = 0;
+  // Icon
+  ctx.fillStyle = '#080810'; ctx.font = 'bold 18px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('⚡', reactorX, reactorY);
+
+  // Shockwaves
+  shockwaves = shockwaves.filter(s => s.life > 0);
+  for (const s of shockwaves) {
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+    ctx.strokeStyle = s.color + Math.floor(s.life * 255).toString(16).padStart(2,'0');
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    s.r += 4; s.life -= 0.04;
+  }
+
+  // Flash
+  if (flashAlpha > 0) {
+    ctx.fillStyle = `rgba(0,255,224,${flashAlpha * 0.15})`;
+    ctx.fillRect(0, 0, cw, ch);
+    flashAlpha -= 0.03;
+  }
+
+  // Particles
+  particles = particles.filter(p => p.life > 0);
+  for (const p of particles) {
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Floaters
+  floaters = floaters.filter(f => f.life > 0);
+  for (const f of floaters) {
+    ctx.globalAlpha = Math.max(0, f.life);
+    ctx.fillStyle = f.color;
+    ctx.font = 'bold 16px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(f.txt, f.x, f.y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function loop(now) {
+  if (!started) { requestAnimationFrame(loop); return; }
+  const dt = Math.min((now - lastTime) / 1000, 0.1);
+  lastTime = now;
+
+  // Idle income
+  score += idleIncome() * dt;
+
+  // Auto spawn
+  if (autoLevel > 0) {
+    autoTimer -= dt;
+    if (autoTimer <= 0) { spawnNearReactor(); autoTimer = Math.max(0.5, 3 / autoLevel); }
+  }
+
+  // Update particles / floaters
+  for (const p of particles) { p.x += p.vx*dt*60; p.y += p.vy*dt*60; p.vy += 0.1*dt*60; p.life -= p.decay*dt*60; }
+  for (const f of floaters) { f.y += f.vy; f.life -= 0.02; }
+
+  setGrid(); setReactor();
+  draw();
+
+  // HUD
+  document.getElementById('score-box').textContent = Math.floor(score).toLocaleString();
+  document.getElementById('idle-box').textContent = '+' + idleIncome().toFixed(1) + '/sec idle';
+
+  const elapsed = now - gameStartTime;
+  if (elapsed < 300000) {
+    document.getElementById('timer-bar').textContent = formatTime(elapsed) + ' / 5:00';
+  } else {
+    if (score > bestScore) bestScore = Math.floor(score);
+    document.getElementById('timer-bar').textContent = '⏱ 5min score: ' + Math.floor(score).toLocaleString();
+    document.getElementById('final-score').textContent = '🏆 Best 5-min: ' + bestScore.toLocaleString();
+  }
+
+  updateUpgUI();
+  requestAnimationFrame(loop);
+}
+
+// Input
+function handleTap(x, y) {
+  if (!started) return;
+  setGrid(); setReactor();
+  const dx = x - reactorX, dy = y - reactorY;
+  if (Math.sqrt(dx*dx+dy*dy) < 50) {
+    spawnNearReactor();
+    spawnParticles(x, y, '#00ffe0', 6);
+  }
+}
+
+canvas.addEventListener('click', e => handleTap(e.clientX, e.clientY));
+canvas.addEventListener('touchend', e => {
+  const t = e.changedTouches[0];
+  handleTap(t.clientX, t.clientY);
+  e.preventDefault();
+}, { passive: false });
+
+document.getElementById('start-btn').addEventListener('click', () => {
+  document.getElementById('start-screen').style.display = 'none';
+  started = true; gameStartTime = performance.now();
+  lastTime = performance.now();
+  // Seed a couple starter nodes
+  setGrid(); setReactor();
+  spawnNearReactor(); spawnNearReactor();
+  requestAnimationFrame(loop);
+});
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
