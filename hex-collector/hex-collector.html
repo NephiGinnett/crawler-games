@@ -1,0 +1,1420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Hex Collector</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0a14; overflow: hidden; font-family: sans-serif; }
+</style>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ─── Layout ───────────────────────────────────────────────────────
+const W = 360, H = 640;
+const PLAYER_Y = H - 110;
+const PLAYER_W = 60;
+const BARRIER_H = 54;
+const WAVES_PER_LEVEL = 10;
+const TROOP_CAP = 99999;
+const BOSS_FLOOR = 5;
+const INFINITE_THRESHOLD = 1000;
+
+// ─── Families ─────────────────────────────────────────────────────
+// Cycle: red > green > blue > yellow > red
+const FAM = {
+  red:    { op:"add",      sym:"+", label:"RED",    beats:"yellow", glow:"#ff6b6b" },
+  green:  { op:"multiply", sym:"×", label:"GREEN",  beats:"red",    glow:"#6bff9e" },
+  blue:   { op:"divide",   sym:"÷", label:"BLUE",   beats:"green",  glow:"#6bb5ff" },
+  yellow: { op:"subtract", sym:"−", label:"YELLOW", beats:"blue",   glow:"#ffe66b" },
+  gray:   { op:"boss",     sym:"⚡", label:"BOSS",   beats:null,     glow:"#d0d0d0" },
+};
+
+function matchup(pf, ef) {
+  if (pf === ef) return 0;
+  if (FAM[pf]?.beats === ef) return 1;
+  if (FAM[ef]?.beats === pf) return -1;
+  return 0;
+}
+
+// ─── Hex pools ────────────────────────────────────────────────────
+const POOLS = {
+  red:    ["#FF6B6B","#FF4757","#FF6348","#FF7675","#D63031","#E17055","#FC5C65","#EB3B5A","#FF5252","#F53B57","#C0392B","#E74C3C","#FF6F61","#D7263D","#F76D57","#BF4040","#FF8A80","#FF5C5C","#C94B4B","#A93226"],
+  green:  ["#6BFF9E","#55EFC4","#00B894","#26DE81","#2ECC71","#1DD1A1","#6BCB77","#4CAF50","#43A047","#2E7D32","#81C784","#00E676","#69F0AE","#76FF03","#64DD17","#7CB342","#8BC34A","#CDDC39","#AED581","#9CCC65"],
+  blue:   ["#6BB5FF","#74B9FF","#0984E3","#4A90E2","#5DADE2","#3498DB","#2980B9","#45AAF2","#4B7BEC","#2196F3","#1976D2","#42A5F5","#64B5F6","#90CAF9","#5C6BC0","#3F51B5","#7986CB","#9FA8DA","#7C4DFF","#5E35B1"],
+  yellow: ["#FFE66B","#FDCB6E","#F9CA24","#ECC94B","#F6E05E","#FAF089","#FFD700","#FFC107","#FFB300","#FFCA28","#FFD54F","#FFE082","#FFF176","#F57F17","#F9A825","#F0A500","#FFA726","#FFB74D","#FFCC02","#F1C40F"],
+  gray:   ["#B2BEC3","#DFE6E9","#636E72","#A0A0A0","#C0C0C0","#808080","#D3D3D3","#E0E0E0","#BDBDBD","#9E9E9E","#757575","#616161","#EEEEEE","#E8E8E8","#FAFAFA","#F5F5F5"],
+};
+const FAM_KEYS = ["red","green","blue","yellow"];
+
+function pickHex(family, avoid=[]) {
+  const pool = POOLS[family] || POOLS.gray;
+  const fresh = pool.filter(h => !avoid.includes(h));
+  const src = fresh.length ? fresh : pool;
+  return src[Math.floor(Math.random() * src.length)];
+}
+function hexFamily(hex) {
+  for (const [f, pool] of Object.entries(POOLS)) if (pool.includes(hex)) return f;
+  return "red";
+}
+function lum(hex) {
+  const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+  return (0.299*r+0.587*g+0.114*b)/255;
+}
+function tc(hex) { return lum(hex)>0.55?"#111":"#fff"; }
+function rgba(hex,a=0.82) {
+  const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+// ─── Math ──────────────────────────────────────────────────────────
+function applyOp(troops, op, val) {
+  let r;
+  if (op==="add")      r = troops + val;
+  else if (op==="multiply") r = troops * val;
+  else if (op==="divide")   r = Math.max(1, Math.floor(troops/val));
+  else if (op==="subtract") r = Math.max(0, troops - val);
+  else if (op==="power")    r = Math.min(TROOP_CAP, Math.floor(Math.pow(troops, val)));
+  else if (op==="root")     r = Math.max(BOSS_FLOOR, Math.floor(Math.pow(troops, 1/val)));
+  else r = troops;
+  return Math.min(TROOP_CAP, Math.max(0, r));
+}
+function bval(op, wave, level) {
+  const w = wave + (level-1)*WAVES_PER_LEVEL;
+  if (op==="multiply") return 2; // capped — ×3 was too explosive
+  if (op==="add")      return Math.floor(Math.random()*(5+w*1.5))+2;
+  if (op==="divide")   return Math.random()<0.65?2:3;
+  if (op==="subtract") return Math.floor(Math.random()*(3+w))+1;
+  return 1;
+}
+function enemyCount(wave, level, playerTroops) {
+  // Aggressive scaling — enemies keep pace even at high troop counts
+  // Wave 1 Lvl1: 45%, grows 6% per wave, 15% per level
+  // Wave 10 Lvl1: ~99%. Wave 1 Lvl2: 60%. Keeps fights meaningful.
+  const waveScale = 0.45 + (wave - 1) * 0.06 + (level - 1) * 0.15;
+  const base = Math.floor(playerTroops * Math.min(waveScale, 1.4)); // cap at 140%
+  const minimum = Math.floor(6 * Math.pow(1.5, wave-1) * (1+(level-1)*0.5));
+  return Math.max(minimum, base);
+}
+function troopSpeed(t) {
+  if (t<=50)   return 1.2;
+  if (t<=200)  return 1.5+(t-50)/150*0.6;
+  if (t<=500)  return 2.1+(t-200)/300*0.9;
+  if (t<=1000) return 3.0+(t-500)/500*1.5;
+  return Math.min(8.0, 4.5+(t-1000)/2000);
+}
+
+// ─── Object factories ──────────────────────────────────────────────
+let _id = 0;
+// Weighted family draw: multiply is rare, divide/subtract more common
+function weightedFamily() {
+  const r = Math.random();
+  if (r < 0.15) return "green";   // ×  multiply  — 15%
+  if (r < 0.45) return "red";     // +  add        — 30%
+  if (r < 0.75) return "blue";    // ÷  divide     — 30%
+  return "yellow";                 // −  subtract   — 25%
+}
+function mkBarrier(wave, level, wide, avoid) {
+  const fk = weightedFamily();
+  const f = FAM[fk];
+  const hex = pickHex(fk, avoid);
+  const val = bval(f.op, wave, level);
+  const w = wide ? 130 : 150;
+  return { kind:"barrier", id:_id++, hex, fk, f, val, w, h:BARRIER_H,
+           label:`${f.sym}${val}`, x:0, y:-BARRIER_H-Math.random()*20 };
+}
+function mkSingle(wave, level, avoid) {
+  const b = mkBarrier(wave, level, false, avoid);
+  b.x = W*0.15 + Math.random()*W*0.7;
+  return [b];
+}
+function mkPair(wave, level, avoid) {
+  const a = mkBarrier(wave, level, true, avoid);
+  const b = mkBarrier(wave, level, true, [...avoid, a.hex]);
+  const gap=10, total=a.w+b.w+gap, sx=(W-total)/2;
+  a.x = sx+a.w/2; b.x = sx+a.w+gap+b.w/2;
+  return [a, b];
+}
+function mkEnemy(wave, level, playerTroops) {
+  const fk = FAM_KEYS[Math.floor(Math.random()*4)];
+  const f  = FAM[fk];
+  const hex = pickHex(fk);
+  const val = bval(f.op, wave, level);
+  return { kind:"enemy", id:_id++, fk, f, hex,
+           count: enemyCount(wave, level, playerTroops),
+           op: f.op, val, sym: f.sym,
+           w:90, h:68, x:W/2, y:-80 };
+}
+function bossScale(level) {
+  // Level 1: 0.5x, grows 0.15x per level, surpasses player around level 4-5
+  return 0.5 + (level - 1) * 0.15;
+}
+function mkBoss(level, playerTroops) {
+  const op = Math.random()<0.5?"power":"root";
+  // val is the exponent — small so numbers stay sane
+  const val = op==="power" ? +(1.3+level*0.06).toFixed(2) : 2;
+  const scale = bossScale(level);
+  const levelBase = level * 20;
+  // Boss army scales with the player — no free ride
+  const bossArmy = Math.floor(playerTroops * scale) + levelBase;
+  const hex = pickHex("gray");
+  return { kind:"boss", id:_id++, op, val, hex,
+           bossArmy,
+           label: op==="power"?`^${val.toFixed(1)}`:"√",
+           w:W-20, h:BARRIER_H+10, x:W/2, y:-BARRIER_H-30 };
+}
+
+// ─── Spawn queue ───────────────────────────────────────────────────
+function buildQueue(wave, level) {
+  const isBoss = wave > WAVES_PER_LEVEL;
+  const q = [];
+  if (isBoss) {
+    for (let i=0;i<3+Math.floor(Math.random()*2);i++) q.push("single");
+    q.push("boss");
+  } else {
+    const groups = 2+Math.floor(wave/3);
+    for (let g=0;g<groups;g++) {
+      const bc = 3+Math.floor(Math.random()*3);
+      for (let b=0;b<bc;b++) {
+        const last = b===bc-1;
+        q.push((!last && Math.random()<0.3)?"pair":"single");
+      }
+      q.push("enemy");
+    }
+  }
+  return q;
+}
+
+// ─── FloatingText ──────────────────────────────────────────────────
+function FloatingText({ texts }) {
+  return (
+    <div style={{position:"absolute",inset:0,pointerEvents:"none",zIndex:40}}>
+      {texts.map(t=>(
+        <div key={t.id} style={{
+          position:"absolute",left:t.x,top:t.y,
+          fontFamily:"'Bebas Neue',sans-serif",fontSize:t.big?28:20,
+          color:t.color,textShadow:"0 2px 10px #000a",
+          animation:"floatUp 1.1s ease-out forwards",
+          transform:"translateX(-50%)",whiteSpace:"nowrap",
+        }}>{t.text}</div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Battle screen ─────────────────────────────────────────────────
+function BattleScreen({ info, onDone }) {
+  // info: { playerHex, playerFk, playerTroops,
+  //         enemyHex, enemyFk, enemyCount, enemyOp, enemyVal, enemySym }
+  // Phases: clash → result → op_effect
+  const [step, setStep] = useState(0);
+  const [survivor, setSurvivor] = useState(null);
+  const [afterOp, setAfterOp] = useState(null);
+  const pf = FAM[info.playerFk] || FAM.red;
+  const ef = FAM[info.enemyFk]  || FAM.red;
+  const result = matchup(info.playerFk, info.enemyFk);
+  const matchLabel = result===1?"▲ COLOR ADVANTAGE ×1.6":result===-1?"▼ COLOR DISADVANTAGE ×0.6":"= NEUTRAL";
+  const matchColor = result===1?"#6bff9e":result===-1?"#ff6b6b":"#e8d5ff";
+  const won = survivor!==null && survivor > 0;
+
+  // Step 1: resolve fight
+  useEffect(()=>{
+    const t = setTimeout(()=>{
+      const atk = result===1?1.6:result===-1?0.6:1.0;
+      const def = result===-1?1.5:result===1?0.7:1.0;
+      const rem = Math.max(0, Math.floor(info.playerTroops*atk) - Math.floor(info.enemyCount*def));
+      setSurvivor(rem);
+      setStep(1);
+    }, 1200);
+    return ()=>clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+
+  // Step 2: apply enemy op to survivors (or to 1 if defeated)
+  useEffect(()=>{
+    if (step===1 && survivor!==null) {
+      const t = setTimeout(()=>{
+        const base = survivor > 0 ? survivor : 1;
+        setAfterOp(applyOp(base, info.enemyOp, info.enemyCount));
+        setStep(2);
+      }, 1300);
+      return ()=>clearTimeout(t);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[step, survivor]);
+
+  // Step 3: done
+  useEffect(()=>{
+    if (step===2 && afterOp!==null) {
+      const t = setTimeout(()=>onDone(afterOp, info.enemyOp, info.enemyVal, won), 1500);
+      return ()=>clearTimeout(t);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[step, afterOp]);
+
+  const opDiff = afterOp!==null && survivor!==null ? afterOp - Math.max(1,survivor) : null;
+
+  return (
+    <div style={{position:"absolute",inset:0,zIndex:60,background:"rgba(4,2,12,0.95)",
+      display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14}}>
+      <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:12,color:matchColor,letterSpacing:3}}>{matchLabel}</div>
+
+      {/* Clash row */}
+      <div style={{display:"flex",alignItems:"center",gap:24}}>
+        <div style={{textAlign:"center"}}>
+          <div style={{width:50,height:50,borderRadius:10,margin:"0 auto 6px",
+            background:rgba(info.playerHex,0.9),border:`2px solid ${info.playerHex}`,
+            boxShadow:`0 0 20px ${info.playerHex}88`,
+            display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>🪖</div>
+          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:26,color:pf.glow,textShadow:`0 0 14px ${pf.glow}`}}>{info.playerTroops}</div>
+          <div style={{fontSize:9,color:pf.glow,fontFamily:"monospace"}}>{info.playerHex}</div>
+        </div>
+        <div style={{fontSize:30,animation:"swords 0.5s infinite"}}>⚔️</div>
+        <div style={{textAlign:"center"}}>
+          <div style={{width:50,height:50,borderRadius:10,margin:"0 auto 6px",
+            background:rgba(info.enemyHex,0.9),border:`2px solid ${info.enemyHex}`,
+            boxShadow:`0 0 20px ${info.enemyHex}88`,
+            display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>💀</div>
+          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:26,color:ef.glow,textShadow:`0 0 14px ${ef.glow}`}}>{info.enemyCount}</div>
+          <div style={{fontSize:9,color:ef.glow,fontFamily:"monospace"}}>{info.enemyHex}</div>
+        </div>
+      </div>
+
+      {/* Fight result */}
+      {step>=1 && survivor!==null && (
+        <div style={{textAlign:"center",animation:"popIn 0.3s ease"}}>
+          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:36,letterSpacing:3,
+            color:won?"#6bff9e":"#ff6b6b",
+            textShadow:`0 0 20px ${won?"#6bff9e":"#ff6b6b"}`}}>
+            {won?"VICTORY!":"DEFEATED"}
+          </div>
+          <div style={{color:"#9d88b8",fontSize:12}}>
+            {won?`${survivor.toLocaleString()} troops remain`:"Army wiped out"}
+          </div>
+        </div>
+      )}
+
+      {/* Enemy op fires */}
+      {step>=2 && afterOp!==null && (
+        <div style={{
+          background:`${rgba(info.enemyHex,0.15)}`,
+          border:`1.5px solid ${info.enemyHex}66`,
+          borderRadius:12,padding:"10px 20px",textAlign:"center",
+          animation:"popIn 0.3s ease",
+        }}>
+          <div style={{color:ef.glow,fontFamily:"'Bebas Neue',sans-serif",fontSize:11,letterSpacing:2,marginBottom:4}}>
+            {won?"ENEMY ABILITY TRIGGERS":"ENEMY ABILITY TRIGGERS"}
+          </div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#e8d5ff"}}>
+              {Math.max(1,survivor).toLocaleString()}
+            </div>
+            <div style={{
+              background:rgba(info.enemyHex,0.7),border:`1.5px solid ${info.enemyHex}`,
+              borderRadius:6,padding:"2px 8px",
+              fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:tc(info.enemyHex),
+            }}>{info.enemySym}{info.enemyCount.toLocaleString()}</div>
+            <div style={{color:"#555",fontSize:18}}>→</div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,
+              color:opDiff>=0?"#6bff9e":"#ff6b6b",
+              textShadow:`0 0 12px ${opDiff>=0?"#6bff9e":"#ff6b6b"}`}}>
+              {afterOp.toLocaleString()}
+            </div>
+          </div>
+          <div style={{color:opDiff>=0?"#4a9a5a":"#9a4a4a",fontSize:10,marginTop:3}}>
+            {opDiff>=0?`+${opDiff.toLocaleString()}`:`${opDiff.toLocaleString()}`} troops
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Boss screen ───────────────────────────────────────────────────
+function BossScreen({ info, onDone }) {
+  // Phase 1: show modifier (^/√) applied to player troops
+  // Phase 2: show troop-vs-troop result against scaled boss army
+  // info: { troops, op, val, hex, label, level, bossArmy, scale }
+  const [step, setStep] = useState(0); // 0=incoming 1=modifier 2=battle result
+  const [modifiedTroops, setModifiedTroops] = useState(null);
+  const [survivor, setSurvivor] = useState(null);
+
+  useEffect(()=>{
+    // Step 1: show modifier result after 1s
+    const t1 = setTimeout(()=>{
+      const mod = Math.max(1, applyOp(info.troops, info.op, info.val));
+      setModifiedTroops(mod);
+      setStep(1);
+    }, 1000);
+    return ()=>clearTimeout(t1);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+
+  useEffect(()=>{
+    if (step===1 && modifiedTroops!==null) {
+      // Step 2: fight result after 1.2s
+      const t2 = setTimeout(()=>{
+        const rem = Math.max(0, modifiedTroops - info.bossArmy);
+        setSurvivor(rem);
+        setStep(2);
+      }, 1200);
+      return ()=>clearTimeout(t2);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[step, modifiedTroops]);
+
+  useEffect(()=>{
+    if (step===2 && survivor!==null) {
+      const t3 = setTimeout(()=>onDone(survivor), 1800);
+      return ()=>clearTimeout(t3);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[step, survivor]);
+
+  const modDiff = modifiedTroops!==null ? modifiedTroops - info.troops : null;
+  const won = survivor!==null && survivor > 0;
+  const scaleLabel = `${(info.scale*100).toFixed(0)}% of your troops`;
+
+  return (
+    <div style={{position:"absolute",inset:0,zIndex:70,background:"rgba(2,2,6,0.97)",
+      display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14}}>
+      <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:13,color:"#d0d0d0",letterSpacing:4}}>
+        LEVEL {info.level} BOSS
+      </div>
+      <div style={{width:70,height:70,borderRadius:14,background:rgba(info.hex,0.9),
+        border:`3px solid ${info.hex}`,boxShadow:`0 0 40px ${info.hex}aa`,
+        display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,
+        animation:"pulse 0.6s infinite"}}>⚡</div>
+
+      {/* Phase 1: modifier fires */}
+      <div style={{textAlign:"center"}}>
+        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:40,color:"#d0d0d0",
+          textShadow:"0 0 20px rgba(200,200,200,0.7)",letterSpacing:2}}>{info.label}</div>
+        <div style={{display:"flex",alignItems:"center",gap:14,marginTop:6}}>
+          <div style={{textAlign:"center"}}>
+            <div style={{color:"#555",fontSize:10,letterSpacing:2}}>YOUR TROOPS</div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:"#e8d5ff"}}>{info.troops.toLocaleString()}</div>
+          </div>
+          <div style={{color:"#444",fontSize:22}}>→</div>
+          <div style={{textAlign:"center"}}>
+            <div style={{color:"#555",fontSize:10,letterSpacing:2}}>AFTER {info.label}</div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,
+              color:modifiedTroops!==null?(modDiff>=0?"#6bff9e":"#ff6b6b"):"#333",
+              animation:modifiedTroops!==null?"popIn 0.3s ease":"none"}}>
+              {modifiedTroops!==null?modifiedTroops.toLocaleString():"..."}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Phase 2: vs boss army */}
+      {step>=1 && modifiedTroops!==null && (
+        <div style={{textAlign:"center",width:"90%",animation:"slideUp 0.3s ease"}}>
+          <div style={{color:"#555",fontSize:10,letterSpacing:2,marginBottom:6}}>VS BOSS ARMY ({scaleLabel})</div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:20}}>
+            <div style={{textAlign:"center"}}>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:26,color:"#6bff9e"}}>{modifiedTroops.toLocaleString()}</div>
+              <div style={{fontSize:9,color:"#4a7a4a"}}>YOU</div>
+            </div>
+            <div style={{fontSize:28,animation:"swords 0.5s infinite"}}>⚔️</div>
+            <div style={{textAlign:"center"}}>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:26,color:"#ff6b6b"}}>{info.bossArmy.toLocaleString()}</div>
+              <div style={{fontSize:9,color:"#7a4a4a"}}>BOSS</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Phase 3: result */}
+      {step===2 && survivor!==null && (
+        <div style={{textAlign:"center",animation:"popIn 0.3s ease"}}>
+          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:44,letterSpacing:3,
+            color:won?"#6bff9e":"#ff6b6b",textShadow:`0 0 30px ${won?"#6bff9e":"#ff6b6b"}`}}>
+            {won?"VICTORY!":"DEFEATED"}
+          </div>
+          <div style={{color:"#9d88b8",fontSize:13,marginTop:4}}>
+            {won?`${survivor.toLocaleString()} troops remain`:"Your army was wiped out"}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ─── Coloring Pages ────────────────────────────────────────────────
+
+const COLORING_PAGES = [
+  {
+    id: "mandala1",
+    title: "SOLAR MANDALA",
+    unlockLevel: 1,
+    regions: [
+      // Center circle
+      { id:"c0", d:"M180,180 m-18,0 a18,18 0 1,0 36,0 a18,18 0 1,0 -36,0" },
+      // Inner ring petals (8)
+      { id:"p0", d:"M180,162 C174,150 168,148 168,140 C168,132 174,128 180,128 C186,128 192,132 192,140 C192,148 186,150 180,162Z" },
+      { id:"p1", d:"M198,162 C208,154 214,150 220,154 C226,158 226,166 220,170 C214,174 208,172 198,162Z" },
+      { id:"p2", d:"M198,180 C210,174 214,168 222,170 C230,172 232,180 228,186 C224,192 216,192 198,180Z" },
+      { id:"p3", d:"M198,198 C208,206 208,214 202,218 C196,222 188,220 186,212 C184,204 190,200 198,198Z" },
+      { id:"p4", d:"M180,198 C186,210 184,218 178,220 C172,222 166,216 168,208 C170,200 176,198 180,198Z" },
+      { id:"p5", d:"M162,198 C152,206 146,206 142,200 C138,194 140,186 148,184 C156,182 160,190 162,198Z" },
+      { id:"p6", d:"M162,180 C150,176 146,170 148,162 C150,154 158,150 164,154 C170,158 170,166 162,180Z" },
+      { id:"p7", d:"M162,162 C154,152 154,144 160,140 C166,136 174,138 176,146 C178,154 172,158 162,162Z" },
+      // Middle ring (8 diamonds)
+      { id:"m0", d:"M180,108 L192,124 L180,140 L168,124Z" },
+      { id:"m1", d:"M220,120 L228,138 L212,142 L204,124Z" },
+      { id:"m2", d:"M244,154 L244,172 L228,172 L224,154Z" },
+      { id:"m3", d:"M236,196 L224,210 L210,198 L220,182Z" },
+      { id:"m4", d:"M204,228 L188,232 L182,216 L198,210Z" },
+      { id:"m5", d:"M162,228 L148,216 L156,202 L172,210Z" },
+      { id:"m6", d:"M128,200 L122,182 L138,178 L146,196Z" },
+      { id:"m7", d:"M120,158 L132,144 L146,156 L136,172Z" },
+      // Outer ring arcs (8)
+      { id:"o0", d:"M180,88 C196,88 210,94 220,104 L208,116 C200,108 190,104 180,104 C170,104 160,108 152,116 L140,104 C150,94 164,88 180,88Z" },
+      { id:"o1", d:"M252,116 C260,128 264,142 264,156 L248,156 C248,146 246,136 240,126Z" },
+      { id:"o2", d:"M264,180 C264,196 258,210 248,220 L238,208 C246,200 250,190 250,180Z" },
+      { id:"o3", d:"M238,240 C226,252 210,260 194,262 L192,246 C204,244 214,238 222,230Z" },
+      { id:"o4", d:"M180,272 C164,272 150,266 140,256 L152,246 C160,254 170,258 180,258 C190,258 200,254 208,246 L220,256 C210,266 196,272 180,272Z" },
+      { id:"o5", d:"M108,240 C98,228 92,214 92,200 L108,200 C108,210 112,220 118,228Z" },
+      { id:"o6", d:"M96,156 C96,140 102,126 112,116 L122,128 C114,136 110,146 110,156Z" },
+      { id:"o7", d:"M112,220 C104,208 100,196 100,182 L116,180 C116,192 120,202 126,212Z" },
+    ]
+  },
+  {
+    id: "geo1",
+    title: "CRYSTAL GRID",
+    unlockLevel: 1,
+    regions: [
+      // Center hexagon
+      { id:"h0", d:"M180,160 L206,175 L206,205 L180,220 L154,205 L154,175Z" },
+      // 6 surrounding hexagons
+      { id:"h1", d:"M180,100 L206,115 L206,145 L180,160 L154,145 L154,115Z" },
+      { id:"h2", d:"M232,130 L258,145 L258,175 L232,190 L206,175 L206,145Z" },
+      { id:"h3", d:"M232,190 L258,205 L258,235 L232,250 L206,235 L206,205Z" },
+      { id:"h4", d:"M180,220 L206,235 L206,265 L180,280 L154,265 L154,235Z" },
+      { id:"h5", d:"M128,190 L154,205 L154,235 L128,250 L102,235 L102,205Z" },
+      { id:"h6", d:"M128,130 L154,145 L154,175 L128,190 L102,175 L102,145Z" },
+      // Triangle connectors between hexagons
+      { id:"t0", d:"M180,100 L206,115 L180,130 L154,115Z" },
+      { id:"t1", d:"M206,115 L232,130 L219,145 L206,130Z" },
+      { id:"t2", d:"M232,130 L258,145 L245,160 L232,145Z" },
+      { id:"t3", d:"M232,190 L245,205 L232,220 L206,205Z" },
+      { id:"t4", d:"M206,235 L219,250 L206,265 L180,250Z" },
+      { id:"t5", d:"M154,235 L154,265 L128,250 L141,235Z" },
+      { id:"t6", d:"M102,205 L128,220 L115,205 L102,190Z" },
+      { id:"t7", d:"M102,145 L128,160 L115,175 L102,160Z" },
+      // Corner diamonds
+      { id:"d0", d:"M180,60 L196,80 L180,100 L164,80Z" },
+      { id:"d1", d:"M268,108 L286,128 L268,148 L250,128Z" },
+      { id:"d2", d:"M268,232 L286,252 L268,272 L250,252Z" },
+      { id:"d3", d:"M180,300 L196,320 L180,340 L164,320Z" },
+      { id:"d4", d:"M92,232 L110,252 L92,272 L74,252Z" },
+      { id:"d5", d:"M92,108 L110,128 L92,148 L74,128Z" },
+    ]
+  },
+];
+
+function ColoringApp({ collection, unlockedLevels, onClose }) {
+  const [pageIdx, setPageIdx] = useState(0);
+  const [fills, setFills] = useState({}); // { pageId_regionId: hex }
+  const [selectedHex, setSelectedHex] = useState(null);
+  const [tab, setTab] = useState("paint"); // paint | palette
+
+  const page = COLORING_PAGES[pageIdx];
+  const isUnlocked = unlockedLevels >= page.unlockLevel;
+
+  function fillRegion(regionId) {
+    if (!selectedHex || !isUnlocked) return;
+    setFills(f => ({ ...f, [`${page.id}_${regionId}`]: selectedHex }));
+  }
+
+  function getColor(regionId) {
+    return fills[`${page.id}_${regionId}`] || "#1a1a2e";
+  }
+
+  const completedRegions = page.regions.filter(r => fills[`${page.id}_${r.id}`]).length;
+  const pct = Math.round((completedRegions / page.regions.length) * 100);
+
+  return (
+    <div style={{position:"absolute",inset:0,zIndex:85,background:"#06040f",
+      display:"flex",flexDirection:"column",overflow:"hidden"}}>
+
+      {/* Header */}
+      <div style={{padding:"12px 16px 8px",borderBottom:"1px solid rgba(255,255,255,0.07)",
+        display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+        <div>
+          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#e8d5ff",letterSpacing:3}}>
+            🎨 COLOR STUDIO
+          </div>
+          <div style={{color:"#5a4878",fontSize:10,letterSpacing:1}}>{pct}% complete</div>
+        </div>
+        <button onClick={onClose} style={{background:"rgba(255,255,255,0.08)",
+          border:"1px solid rgba(255,255,255,0.15)",color:"#e8d5ff",borderRadius:8,
+          padding:"5px 12px",fontFamily:"'Bebas Neue',sans-serif",fontSize:15,cursor:"pointer"}}>
+          ✕
+        </button>
+      </div>
+
+      {/* Page selector */}
+      <div style={{display:"flex",gap:6,padding:"8px 14px",flexShrink:0,
+        borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+        {COLORING_PAGES.map((p,i)=>(
+          <button key={p.id} onClick={()=>setPageIdx(i)} style={{
+            flex:1,padding:"6px 4px",borderRadius:8,
+            background:pageIdx===i?"rgba(124,58,237,0.3)":"rgba(255,255,255,0.04)",
+            border:`1px solid ${pageIdx===i?"#7c3aed":"rgba(255,255,255,0.08)"}`,
+            color:pageIdx===i?"#e8d5ff":"#5a4878",
+            fontFamily:"'Bebas Neue',sans-serif",fontSize:11,letterSpacing:1,cursor:"pointer",
+          }}>{p.title}</button>
+        ))}
+      </div>
+
+      {/* Canvas */}
+      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",
+        background:"#0d0a18",position:"relative",overflow:"hidden"}}>
+        {!isUnlocked ? (
+          <div style={{textAlign:"center",color:"#3a2d5a"}}>
+            <div style={{fontSize:32,marginBottom:8}}>🔒</div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,letterSpacing:2}}>
+              COMPLETE LEVEL {page.unlockLevel} TO UNLOCK
+            </div>
+          </div>
+        ) : (
+          <svg width="360" height="360" viewBox="80 50 200 300"
+            style={{display:"block",cursor:selectedHex?"crosshair":"default"}}>
+            {/* White base */}
+            <rect x="80" y="50" width="200" height="300" fill="#f8f6ff" rx="8"/>
+            {/* Regions */}
+            {page.regions.map(r=>(
+              <path key={r.id} d={r.d}
+                fill={getColor(r.id)}
+                stroke="#2a1f3d"
+                strokeWidth="1.2"
+                strokeLinejoin="round"
+                onClick={()=>fillRegion(r.id)}
+                style={{
+                  cursor:selectedHex?"crosshair":"default",
+                  transition:"fill 0.15s",
+                  filter:getColor(r.id)!=="#1a1a2e"?`drop-shadow(0 0 3px ${getColor(r.id)}88)`:"none",
+                }}
+              />
+            ))}
+            {/* Completion shimmer overlay */}
+            {pct===100&&(
+              <rect x="80" y="50" width="200" height="300" rx="8"
+                fill="none" stroke="#ffe66b" strokeWidth="2.5"
+                strokeDasharray="8 4"
+                style={{animation:"spin 4s linear infinite",transformOrigin:"180px 200px"}}/>
+            )}
+          </svg>
+        )}
+      </div>
+
+      {/* Bottom palette */}
+      <div style={{flexShrink:0,borderTop:"1px solid rgba(255,255,255,0.07)"}}>
+        {/* Tabs */}
+        <div style={{display:"flex",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+          {["paint","palette"].map(t=>(
+            <button key={t} onClick={()=>setTab(t)} style={{
+              flex:1,padding:"7px",border:"none",cursor:"pointer",
+              background:tab===t?"rgba(124,58,237,0.2)":"transparent",
+              color:tab===t?"#e8d5ff":"#5a4878",
+              fontFamily:"'Bebas Neue',sans-serif",fontSize:12,letterSpacing:1,
+              borderBottom:tab===t?"2px solid #7c3aed":"2px solid transparent",
+            }}>
+              {t==="paint"?"🖌 PAINT":"🎨 COLLECTION"}
+            </button>
+          ))}
+        </div>
+
+        {tab==="paint"&&(
+          <div style={{padding:"8px 12px",height:88,overflowY:"auto"}}>
+            {collection.length===0?(
+              <div style={{color:"#3a2d5a",fontSize:11,textAlign:"center",paddingTop:20,letterSpacing:1}}>
+                Collect hex colors in-game to paint with
+              </div>
+            ):(
+              <>
+                <div style={{color:"#3a2d5a",fontSize:9,letterSpacing:2,marginBottom:6}}>
+                  {selectedHex?`SELECTED: ${selectedHex}`:"TAP A COLOR TO SELECT"}
+                </div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                  {collection.map(hex=>(
+                    <div key={hex} onClick={()=>setSelectedHex(selectedHex===hex?null:hex)}
+                      style={{
+                        width:28,height:28,borderRadius:5,background:hex,
+                        border:`2px solid ${selectedHex===hex?"#fff":hex}`,
+                        boxShadow:selectedHex===hex?`0 0 10px ${hex},0 0 0 2px #fff4`:`0 1px 6px ${hex}44`,
+                        cursor:"pointer",flexShrink:0,
+                        transform:selectedHex===hex?"scale(1.2)":"scale(1)",
+                        transition:"transform 0.1s",
+                      }}/>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {tab==="palette"&&(
+          <div style={{padding:"8px 12px",height:88,overflowY:"auto"}}>
+            <div style={{color:"#3a2d5a",fontSize:9,letterSpacing:2,marginBottom:6}}>
+              {collection.length} COLORS IN COLLECTION
+            </div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+              {[...FAM_KEYS,"gray"].map(fk=>{
+                const hexes = collection.filter(h=>hexFamily(h)===fk);
+                if (!hexes.length) return null;
+                return hexes.map(hex=>(
+                  <div key={hex} title={hex}
+                    style={{width:22,height:22,borderRadius:4,background:hex,
+                      border:`1px solid ${hex}88`,cursor:"pointer",flexShrink:0}}
+                    onClick={()=>{ setSelectedHex(hex); setTab("paint"); }}/>
+                ));
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Collection screen ─────────────────────────────────────────────
+function CollectionScreen({ collection, onClose, onOpenColoring }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div style={{position:"absolute",inset:0,zIndex:80,background:"#080512",
+      display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      <div style={{padding:"16px 18px 10px",borderBottom:"1px solid rgba(255,255,255,0.07)",
+        display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+        <div>
+          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:"#e8d5ff",letterSpacing:3}}>HEX COLLECTION</div>
+          <div style={{color:"#5a4878",fontSize:11}}>{collection.length} colors claimed</div>
+        </div>
+        <div style={{display:"flex",gap:6}}>
+          <button onClick={onOpenColoring} style={{background:"rgba(124,58,237,0.2)",border:"1px solid #7c3aed44",
+            color:"#c4a8ff",borderRadius:8,padding:"6px 12px",
+            fontFamily:"'Bebas Neue',sans-serif",fontSize:13,cursor:"pointer",letterSpacing:1}}>🎨 PAINT</button>
+          <button onClick={onClose} style={{background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",
+            color:"#e8d5ff",borderRadius:8,padding:"6px 12px",
+            fontFamily:"'Bebas Neue',sans-serif",fontSize:16,cursor:"pointer"}}>✕</button>
+        </div>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:"12px 16px"}}>
+        {collection.length===0?(
+          <div style={{textAlign:"center",color:"#3a2d5a",fontFamily:"'Bebas Neue',sans-serif",
+            fontSize:18,marginTop:80,letterSpacing:2}}>
+            NO COLORS YET<br/>
+            <span style={{fontSize:12,color:"#2a1f40"}}>Hit barriers in-game to collect hex codes</span>
+          </div>
+        ):(
+          [...FAM_KEYS,"gray"].map(fk=>{
+            const hexes = collection.filter(h=>hexFamily(h)===fk);
+            if (!hexes.length) return null;
+            const f = FAM[fk];
+            return (
+              <div key={fk} style={{marginBottom:20}}>
+                <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:12,color:f.glow,
+                  letterSpacing:3,marginBottom:8}}>
+                  {f.label} — {fk!=="gray"?f.op.toUpperCase():"BOSS"}
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:6}}>
+                  {hexes.map(hex=>(
+                    <div key={hex} style={{borderRadius:8,background:hex,
+                      border:`1.5px solid ${hex}`,boxShadow:`0 2px 8px ${hex}55`,
+                      padding:"7px 2px",textAlign:"center"}}>
+                      <div style={{fontSize:8,color:tc(hex),fontFamily:"monospace",fontWeight:700}}>{hex}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+      <div style={{padding:"10px 16px",borderTop:"1px solid rgba(255,255,255,0.07)",flexShrink:0}}>
+        <button onClick={()=>{
+          navigator.clipboard?.writeText(collection.join(", ")).catch(()=>{});
+          setCopied(true); setTimeout(()=>setCopied(false),1500);
+        }} style={{...Btn("#3a2d5a","#221840"),fontSize:14,padding:"10px 0",width:"100%"}}>
+          {copied?"✓ COPIED!":"📋 COPY ALL HEX CODES"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Color picker ──────────────────────────────────────────────────
+function ColorPicker({ collection, level, troops, onPick }) {
+  const [sel, setSel] = useState(null);
+  return (
+    <div style={{position:"absolute",inset:0,zIndex:80,
+      background:"linear-gradient(180deg,#080512 0%,#05120a 100%)",
+      display:"flex",flexDirection:"column",alignItems:"center",overflow:"hidden"}}>
+      <div style={{padding:"24px 20px 0",textAlign:"center",flexShrink:0}}>
+        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:13,color:"#5a4878",letterSpacing:4}}>LEVEL {level}</div>
+        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:36,color:"#e8d5ff",letterSpacing:3,lineHeight:1,
+          textShadow:"0 0 30px rgba(180,100,255,0.6)"}}>CHOOSE YOUR COLOR</div>
+        {troops>0&&<div style={{color:"#6bff9e",fontFamily:"'Bebas Neue',sans-serif",fontSize:18,marginTop:4}}>
+          Carrying {troops.toLocaleString()} troops</div>}
+      </div>
+      <div style={{flex:1,overflowY:"auto",width:"100%",padding:"16px 18px"}}>
+        {FAM_KEYS.map(fk=>{
+          const f=FAM[fk];
+          const opts = collection.filter(h=>hexFamily(h)===fk).slice(0,8);
+          const show = opts.length ? opts : POOLS[fk].slice(0,4);
+          return (
+            <div key={fk} style={{marginBottom:16}}>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:12,color:f.glow,letterSpacing:3,marginBottom:6}}>
+                {f.label} — {f.sym} {f.op.toUpperCase()}
+              </div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                {show.map(hex=>(
+                  <div key={hex} onClick={()=>setSel(hex)} style={{
+                    width:54,height:44,borderRadius:10,background:hex,
+                    border:`2.5px solid ${sel===hex?"#fff":hex}`,
+                    boxShadow:sel===hex?`0 0 20px ${hex},0 0 0 3px #fff3`:`0 2px 10px ${hex}55`,
+                    cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
+                    fontSize:8,color:tc(hex),fontFamily:"monospace",fontWeight:700,
+                    transform:sel===hex?"scale(1.12)":"scale(1)",transition:"transform 0.1s",
+                  }}>{hex}</div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{padding:"12px 20px 20px",width:"100%",flexShrink:0}}>
+        <button onClick={()=>sel&&onPick(sel)} disabled={!sel}
+          style={{...Btn(sel?"#7c3aed":"#2a1f40",sel?"#4c1d95":"#1a1030"),
+            opacity:sel?1:0.5,fontSize:18,padding:"14px 0",width:"100%"}}>
+          {sel?`▶ START WITH ${sel}`:"SELECT A COLOR FIRST"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MAIN GAME
+// All game state lives in refs. React state is only used for rendering.
+// ═══════════════════════════════════════════════════════════════════
+function HexCollector() {
+
+  // ── Render state ──
+  const [screen, setScreen]           = useState("title");
+  // screens: title | colorpick | playing | battle | boss | wave_clear | level_clear | game_over | win | collection
+  const [renderTroops, setRenderTroops]     = useState(10);
+  const [renderHex,    setRenderHex]        = useState("#FF6B6B");
+  const [renderFk,     setRenderFk]         = useState("red");
+  const [renderObjs,   setRenderObjs]       = useState([]);
+  const [renderFloats, setRenderFloats]     = useState([]);
+  const [renderWave,   setRenderWave]       = useState(1);
+  const [renderLevel,  setRenderLevel]      = useState(1);
+  const [score,        setScore]            = useState(0);
+  const [collection,   setCollection]       = useState([]);
+  const [shake,        setShake]            = useState(false);
+  const [infiniteMode, setInfiniteMode]     = useState(false);
+  const [battleInfo,   setBattleInfo]       = useState(null);
+  const [bossInfo,     setBossInfo]         = useState(null);
+  const [prevScreen,   setPrevScreen]       = useState("title");
+  const [coloringOpen, setColoringOpen]     = useState(false);
+  const [unlockedLevels, setUnlockedLevels] = useState(1);
+
+  // ── Game refs (source of truth) ──
+  const G = useRef({
+    troops: 10,
+    hex: "#FF6B6B",
+    fk: "red",
+    playerX: W/2,
+    wave: 1,
+    level: 1,
+    objects: [],       // all on-screen objects
+    queue: [],         // spawn queue for current wave
+    queueIdx: 0,
+    spawnTimer: 0,
+    usedHex: [],
+    inBattle: false,
+    screen: "title",
+  });
+
+  const rafRef      = useRef(null);
+  const floatIdRef  = useRef(0);
+  const floatsRef   = useRef([]);
+
+  // ── Helpers ──
+  function pushFloat(x, y, text, color) {
+    const id = floatIdRef.current++;
+    const entry = {id, x, y, text, color};
+    floatsRef.current = [...floatsRef.current, entry];
+    setRenderFloats([...floatsRef.current]);
+    setTimeout(()=>{
+      floatsRef.current = floatsRef.current.filter(f=>f.id!==id);
+      setRenderFloats([...floatsRef.current]);
+    }, 1100);
+  }
+
+  function claimHex(hex) {
+    setCollection(c => c.includes(hex) ? c : [...c, hex]);
+  }
+
+  function doShake() {
+    setShake(true); setTimeout(()=>setShake(false),420);
+  }
+
+  // ── Start wave ──
+  function startWave(wave, level) {
+    const g = G.current;
+    g.wave = wave;
+    g.level = level;
+    g.objects = [];
+    g.queue = buildQueue(wave, level);
+    g.queueIdx = 0;
+    g.spawnTimer = 0;
+    g.usedHex = [];
+    g.inBattle = false;
+    g.screen = "playing";
+    setRenderWave(wave);
+    setRenderLevel(level);
+    setRenderObjs([]);
+    setBattleInfo(null);
+    setBossInfo(null);
+    setScreen("playing");
+  }
+
+  // ── Pointer ──
+  const handlePointerMove = useCallback((e)=>{
+    if (G.current.screen !== "playing") return;
+    const clientX = e.clientX ?? e.touches?.[0]?.clientX;
+    if (!clientX) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    G.current.playerX = Math.max(PLAYER_W/2,
+      Math.min(W-PLAYER_W/2, ((clientX-rect.left)/rect.width)*W));
+  },[]);
+
+  // ── Battle done ──
+  const handleBattleDone = useCallback((remaining, enemyOp, enemyVal, won)=>{
+    const g = G.current;
+    g.inBattle = false;
+    setBattleInfo(null);
+    if (remaining<=0 && !won) {
+      g.troops=0; setRenderTroops(0);
+      g.screen="game_over"; setScreen("game_over");
+    } else {
+      // Apply enemy color op after battle — reward on win, penalty on loss
+      const afterOp = applyOp(Math.max(1, remaining), enemyOp, enemyVal);
+      g.troops = afterOp;
+      setRenderTroops(afterOp);
+      if (afterOp<=0) { g.screen="game_over"; setScreen("game_over"); return; }
+      setScore(s=>s+Math.floor(afterOp*g.wave*g.level*6));
+      g.screen="playing"; setScreen("playing");
+    }
+  },[]);
+
+  // ── Boss done ──
+  const handleBossDone = useCallback((after)=>{
+    const g = G.current;
+    g.inBattle = false;
+    setBossInfo(null);
+    g.troops = after;
+    setRenderTroops(after);
+    if (after<=0) {
+      g.screen="game_over"; setScreen("game_over");
+    } else {
+      setScore(s=>s+Math.floor(after*g.level*50));
+      g.screen="level_clear"; setScreen("level_clear");
+      setUnlockedLevels(u=>Math.max(u, g.level+1));
+    }
+  },[]);
+
+  // ── RAF game loop ──
+  useEffect(()=>{
+    if (screen!=="playing") {
+      cancelAnimationFrame(rafRef.current);
+      return;
+    }
+
+    let lastTime = performance.now();
+
+    function loop(now) {
+      const g = G.current;
+      if (g.screen!=="playing") return;
+      if (g.inBattle) { rafRef.current=requestAnimationFrame(loop); return; }
+
+      const dt = Math.min(now-lastTime, 50);
+      lastTime = now;
+
+      const speed = troopSpeed(g.troops);
+      setInfiniteMode(g.troops >= INFINITE_THRESHOLD);
+
+      // ── Spawn ──
+      const spawnInterval = Math.max(500, 1800 - g.troops*0.4);
+      g.spawnTimer += dt;
+      if (g.spawnTimer >= spawnInterval && g.queueIdx < g.queue.length) {
+        g.spawnTimer = 0;
+        const type = g.queue[g.queueIdx++];
+        let spawned = [];
+        if (type==="single")      spawned = mkSingle(g.wave, g.level, g.usedHex);
+        else if (type==="pair")   spawned = mkPair(g.wave, g.level, g.usedHex);
+        else if (type==="enemy")  spawned = [mkEnemy(g.wave, g.level, g.troops)];
+        else if (type==="boss")   spawned = [mkBoss(g.level, g.troops)];
+        spawned.forEach(o=>{ if(o.kind==="barrier") g.usedHex=[...g.usedHex,o.hex]; });
+        g.objects = [...g.objects, ...spawned];
+      }
+
+      // ── Move + collide ──
+      const px = g.playerX;
+      const kept = [];
+      let troopDelta = 0;
+      let newHex = null;
+      let newFk = null;
+      let battleTarget = null;
+      let bossTarget = null;
+      const claims = [];
+
+      for (const obj of g.objects) {
+        const ny = obj.y + speed*(dt/16);
+
+        if (obj.kind==="barrier") {
+          const hitY = ny+obj.h >= PLAYER_Y && obj.y < PLAYER_Y+30;
+          const hitX = Math.abs(px-obj.x) < (PLAYER_W/2 + obj.w/2 - 10);
+          if (hitY && hitX) {
+            const before = g.troops + troopDelta;
+            const after  = applyOp(before, obj.f.op, obj.val);
+            const diff   = after - before;
+            troopDelta  += diff;
+            pushFloat(px, PLAYER_Y-35, `${diff>=0?"+":""}${Math.round(diff)}`, diff>=0?"#6bff9e":"#ff6b6b");
+            pushFloat(px, PLAYER_Y-60, obj.hex, obj.hex);
+            newHex = obj.hex;
+            newFk  = obj.fk;
+            claims.push(obj.hex);
+            if (diff<0) doShake();
+            // consumed: not pushed to kept
+          } else if (ny <= H+10) {
+            kept.push({...obj, y:ny});
+          }
+
+        } else if (obj.kind==="enemy") {
+          const hitY = ny+obj.h >= PLAYER_Y && obj.y < PLAYER_Y+40;
+          const hitX = Math.abs(px-obj.x) < (PLAYER_W/2 + obj.w/2 - 8);
+          if (hitY && hitX && !g.inBattle) {
+            g.inBattle = true;
+            battleTarget = obj;
+            // consumed
+          } else if (ny <= H+10) {
+            kept.push({...obj, y:ny});
+          }
+
+        } else if (obj.kind==="boss") {
+          const hitY = ny+obj.h >= PLAYER_Y && obj.y < PLAYER_Y+30;
+          if (hitY && !g.inBattle) {
+            g.inBattle = true;
+            bossTarget = obj;
+            // consumed
+          } else if (ny <= H+10) {
+            kept.push({...obj, y:ny});
+          }
+        }
+      }
+
+      // ── Commit ──
+      g.objects = kept;
+
+      if (troopDelta!==0) {
+        g.troops = Math.max(0, g.troops + troopDelta);
+        setRenderTroops(g.troops);
+        if (g.troops<=0) { g.screen="game_over"; setScreen("game_over"); return; }
+      }
+
+      if (newHex) {
+        g.hex = newHex; g.fk = newFk;
+        setRenderHex(newHex); setRenderFk(newFk);
+        claims.forEach(claimHex);
+      }
+
+      setRenderObjs([...kept]);
+
+      if (battleTarget) {
+        setBattleInfo({
+          playerHex: g.hex, playerFk: g.fk, playerTroops: g.troops,
+          enemyHex: battleTarget.hex, enemyFk: battleTarget.fk, enemyCount: battleTarget.count,
+          enemyOp: battleTarget.op, enemyVal: battleTarget.val, enemySym: battleTarget.sym,
+        });
+      }
+      if (bossTarget) {
+        setBossInfo({ troops:g.troops, op:bossTarget.op, val:bossTarget.val,
+                      hex:bossTarget.hex, label:bossTarget.label, level:g.level,
+                      bossArmy:bossTarget.bossArmy, scale:bossScale(g.level) });
+      }
+
+      // ── Wave complete ──
+      if (g.queueIdx >= g.queue.length && g.objects.length===0 && !g.inBattle) {
+        const next = g.wave+1;
+        if (next > WAVES_PER_LEVEL+1) {
+          g.screen="level_clear"; setScreen("level_clear");
+      setUnlockedLevels(u=>Math.max(u, g.level+1));
+        } else {
+          g.wave = next; setRenderWave(next);
+          g.screen="wave_clear"; setScreen("wave_clear");
+        }
+        return;
+      }
+
+      rafRef.current = requestAnimationFrame(loop);
+    }
+
+    rafRef.current = requestAnimationFrame(loop);
+    return ()=>cancelAnimationFrame(rafRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[screen]);
+
+  // ── Shared reset ──
+  function fullReset() {
+    const g = G.current;
+    g.troops=10; g.hex="#FF6B6B"; g.fk="red";
+    g.wave=1; g.level=1;
+    setRenderTroops(10); setRenderHex("#FF6B6B"); setRenderFk("red");
+    setRenderWave(1); setRenderLevel(1); setScore(0);
+  }
+
+  const pf = FAM[renderFk] || FAM.red;
+  const waveProgress = Math.min(1,(renderWave-1)/WAVES_PER_LEVEL);
+
+  return (
+    <div style={{minHeight:"100vh",background:"#030209",display:"flex",
+      flexDirection:"column",alignItems:"center",justifyContent:"center",
+      fontFamily:"'Oswald',sans-serif"}}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;600;700&display=swap');
+        @keyframes floatUp{0%{opacity:1;transform:translateX(-50%) translateY(0) scale(1.1)}100%{opacity:0;transform:translateX(-50%) translateY(-70px) scale(0.8)}}
+        @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-7px)}40%{transform:translateX(7px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+        @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}
+        @keyframes popIn{0%{transform:scale(0.5);opacity:0}100%{transform:scale(1);opacity:1}}
+        @keyframes swords{0%{transform:rotate(-25deg) scale(1)}50%{transform:rotate(25deg) scale(1.4)}100%{transform:rotate(-25deg) scale(1)}}
+        @keyframes slideUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes scroll{0%{background-position:0 0}100%{background-position:0 80px}}
+        @keyframes bossGlow{0%,100%{box-shadow:0 0 20px rgba(200,200,200,0.4)}50%{box-shadow:0 0 60px rgba(200,200,200,1)}}
+      `}</style>
+
+      <div
+        onMouseMove={handlePointerMove}
+        onTouchMove={handlePointerMove}
+        style={{width:W,height:H,position:"relative",overflow:"hidden",
+          background:"linear-gradient(180deg,#0c0820 0%,#141028 40%,#080d08 100%)",
+          borderRadius:26,
+          boxShadow:`0 0 80px ${pf.glow}22,0 0 160px #000f`,
+          animation:shake?"shake 0.42s ease":"none",
+          cursor:screen==="playing"?"none":"default",
+          touchAction:"none",userSelect:"none",
+          transition:"box-shadow 0.5s"}}>
+
+        {/* bg grid */}
+        <div style={{position:"absolute",inset:0,pointerEvents:"none",
+          backgroundImage:"linear-gradient(rgba(255,255,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.025) 1px,transparent 1px)",
+          backgroundSize:"44px 44px",
+          animation:infiniteMode?`scroll ${Math.max(0.3,2-troopSpeed(renderTroops)/8)}s linear infinite`:"none"}}/>
+
+        {/* ══ TITLE ══ */}
+        {screen==="title"&&(
+          <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",
+            alignItems:"center",justifyContent:"center",gap:14,padding:"28px 24px",
+            background:"linear-gradient(180deg,rgba(8,3,20,0.98),rgba(3,10,3,0.98))",
+            animation:"slideUp 0.5s ease"}}>
+            <div style={{display:"flex",gap:4,marginBottom:4}}>
+              {["#FF6B6B","#6BFF9E","#6BB5FF","#FFE66B","#B2BEC3"].map((h,i)=>(
+                <div key={i} style={{width:22,height:22,borderRadius:5,background:h,
+                  boxShadow:`0 0 10px ${h}88`,animation:`pulse ${0.8+i*0.15}s infinite`}}/>
+              ))}
+            </div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:54,letterSpacing:6,
+              lineHeight:1,textAlign:"center",
+              background:"linear-gradient(135deg,#ff6b6b,#ffe66b,#6bff9e,#6bb5ff)",
+              WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>HEX<br/>COLLECTOR</div>
+            <div style={{color:"#3a2d5a",fontSize:12,textAlign:"center",lineHeight:1.7}}>
+              Claim hex colors by hitting barriers.<br/>
+              Your color changes — use it to gain advantage.<br/>
+              Survive 10 waves to face the Boss.
+            </div>
+            <div style={{width:"100%",display:"grid",gridTemplateColumns:"1fr 1fr",gap:5}}>
+              {FAM_KEYS.map(fk=>{
+                const f=FAM[fk], sw=POOLS[fk][0];
+                return (
+                  <div key={fk} style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${sw}33`,
+                    borderRadius:8,padding:"7px 10px",display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{width:20,height:20,borderRadius:4,background:sw,flexShrink:0,
+                      boxShadow:`0 0 8px ${sw}66`}}/>
+                    <div>
+                      <div style={{color:f.glow,fontSize:11,fontFamily:"'Bebas Neue',sans-serif",letterSpacing:1}}>{f.label}</div>
+                      <div style={{color:"#5a4878",fontSize:10}}>{f.sym} {f.op.toUpperCase()}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{background:"rgba(200,200,200,0.06)",border:"1px solid rgba(200,200,200,0.15)",
+              borderRadius:8,padding:"8px 14px",width:"100%",textAlign:"center"}}>
+              <span style={{color:"#d0d0d0",fontFamily:"'Bebas Neue',sans-serif",fontSize:13,letterSpacing:2}}>
+                ⚡ GRAY BOSS — ^ POWER / √ ROOT
+              </span>
+            </div>
+            <button onClick={()=>{ fullReset(); setScreen("colorpick"); }} style={Btn("#7c3aed","#4c1d95")}>▶ PLAY</button>
+            {collection.length>0&&(
+              <button onClick={()=>{ setPrevScreen("title"); setScreen("collection"); }}
+                style={{...Btn("#1a1030","#0d0820"),fontSize:14,padding:"10px 0",
+                  border:"1px solid rgba(255,255,255,0.1)"}}>
+                🎨 MY COLLECTION ({collection.length})
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* ══ COLOR PICK ══ */}
+        {screen==="colorpick"&&(
+          <ColorPicker collection={collection} level={G.current.level} troops={G.current.troops}
+            onPick={(hex)=>{
+              const g=G.current; g.hex=hex; g.fk=hexFamily(hex);
+              setRenderHex(hex); setRenderFk(hexFamily(hex));
+              if(g.troops===0){g.troops=10;setRenderTroops(10);}
+              startWave(g.wave, g.level);
+            }}/>
+        )}
+
+        {/* ══ PLAYING ══ */}
+        {screen==="playing"&&(
+          <>
+            {/* HUD top */}
+            <div style={{position:"absolute",top:0,left:0,right:0,padding:"10px 14px 6px",
+              zIndex:20,background:"linear-gradient(180deg,rgba(0,0,0,0.7),transparent)",
+              display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+              <div>
+                <div style={{color:"#3a2d5a",fontSize:9,letterSpacing:2}}>TROOPS</div>
+                <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:36,color:pf.glow,
+                  lineHeight:1,textShadow:`0 0 18px ${pf.glow}`,animation:"pulse 1.2s infinite"}}>
+                  {renderTroops>=TROOP_CAP?"99K+":renderTroops.toLocaleString()}
+                </div>
+              </div>
+              <div style={{textAlign:"center",flex:1,padding:"0 10px"}}>
+                <div style={{color:"#3a2d5a",fontSize:9,letterSpacing:2,marginBottom:3}}>
+                  {renderWave>WAVES_PER_LEVEL?"BOSS WAVE":`WAVE ${renderWave}/${WAVES_PER_LEVEL}`}
+                </div>
+                <div style={{height:4,background:"rgba(255,255,255,0.08)",borderRadius:2,overflow:"hidden"}}>
+                  <div style={{height:"100%",borderRadius:2,width:`${waveProgress*100}%`,
+                    background:`linear-gradient(90deg,${pf.glow},${renderHex})`,transition:"width 0.3s"}}/>
+                </div>
+                <div style={{color:"#3a2d5a",fontSize:9,letterSpacing:2,marginTop:3}}>LVL {renderLevel}</div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{color:"#3a2d5a",fontSize:9,letterSpacing:2}}>COLOR</div>
+                <div style={{width:34,height:28,borderRadius:6,marginLeft:"auto",background:renderHex,
+                  border:`1.5px solid ${renderHex}`,boxShadow:`0 0 12px ${renderHex}88`,
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  fontSize:14,color:tc(renderHex),fontFamily:"'Bebas Neue',sans-serif"}}>
+                  {pf.sym}
+                </div>
+              </div>
+            </div>
+
+            {infiniteMode&&(
+              <div style={{position:"absolute",top:72,left:0,right:0,display:"flex",justifyContent:"center",zIndex:19}}>
+                <div style={{background:"rgba(255,255,100,0.1)",border:"1px solid rgba(255,255,100,0.3)",
+                  borderRadius:20,padding:"2px 12px",fontFamily:"'Bebas Neue',sans-serif",
+                  fontSize:11,color:"#ffe66b",letterSpacing:2}}>
+                  ⚡ INFINITE SCROLL — {troopSpeed(renderTroops).toFixed(1)}x
+                </div>
+              </div>
+            )}
+
+            {/* Objects */}
+            {renderObjs.map(obj=>{
+              if (obj.kind==="barrier") return (
+                <div key={obj.id} style={{position:"absolute",left:obj.x-obj.w/2,top:obj.y,
+                  width:obj.w,height:obj.h,borderRadius:12,
+                  background:rgba(obj.hex,0.85),border:`2px solid ${obj.hex}`,
+                  boxShadow:`0 0 18px ${obj.hex}55`,
+                  display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                  pointerEvents:"none",backdropFilter:"blur(2px)"}}>
+                  <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,letterSpacing:1,
+                    color:tc(obj.hex),textShadow:lum(obj.hex)<0.55?"0 1px 6px #000a":"0 1px 4px #fffa"}}>
+                    {obj.label}
+                  </div>
+                  <div style={{fontSize:8,color:tc(obj.hex),fontFamily:"monospace",opacity:0.8}}>{obj.hex}</div>
+                </div>
+              );
+              if (obj.kind==="enemy") {
+                const ef=FAM[obj.fk]||FAM.red;
+                return (
+                  <div key={obj.id} style={{position:"absolute",left:obj.x-obj.w/2,top:obj.y,
+                    width:obj.w,pointerEvents:"none"}}>
+                    <div style={{background:rgba(obj.hex,0.88),border:`2.5px solid ${obj.hex}`,
+                      borderRadius:12,padding:"5px 10px",textAlign:"center",
+                      boxShadow:`0 0 22px ${obj.hex}88`,animation:"pulse 0.7s infinite"}}>
+                      <div style={{fontSize:18}}>💀</div>
+                      <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,
+                        color:tc(obj.hex),lineHeight:1}}>{obj.count}</div>
+                      <div style={{fontSize:7,color:tc(obj.hex),fontFamily:"monospace",opacity:0.8}}>{obj.hex}</div>
+                    </div>
+                  </div>
+                );
+              }
+              if (obj.kind==="boss") return (
+                <div key={obj.id} style={{position:"absolute",left:obj.x-obj.w/2,top:obj.y,
+                  width:obj.w,height:obj.h,borderRadius:14,
+                  background:rgba(obj.hex,0.9),border:`3px solid ${obj.hex}`,
+                  animation:"bossGlow 0.8s infinite",
+                  display:"flex",alignItems:"center",justifyContent:"center",gap:10,
+                  pointerEvents:"none",backdropFilter:"blur(4px)"}}>
+                  <span style={{fontSize:22}}>⚡</span>
+                  <div style={{textAlign:"center"}}>
+                    <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:26,color:tc(obj.hex),letterSpacing:2}}>
+                      BOSS — {obj.label}
+                    </div>
+                    <div style={{fontSize:8,color:tc(obj.hex),fontFamily:"monospace",opacity:0.7}}>{obj.hex}</div>
+                  </div>
+                  <span style={{fontSize:22}}>⚡</span>
+                </div>
+              );
+              return null;
+            })}
+
+            {/* Player */}
+            <div style={{position:"absolute",left:G.current.playerX-PLAYER_W/2,top:PLAYER_Y-16,
+              width:PLAYER_W,textAlign:"center",pointerEvents:"none",zIndex:25}}>
+              <div style={{width:PLAYER_W,height:36,borderRadius:10,
+                background:rgba(renderHex,0.88),border:`2px solid ${renderHex}`,
+                boxShadow:`0 0 18px ${renderHex}aa,0 0 40px ${renderHex}44`,
+                display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column"}}>
+                <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:15,
+                  color:tc(renderHex),lineHeight:1}}>{renderTroops.toLocaleString()}</div>
+                <div style={{fontSize:7,color:tc(renderHex),fontFamily:"monospace",opacity:0.85}}>{renderHex}</div>
+              </div>
+              <div style={{width:PLAYER_W,height:8,
+                background:`radial-gradient(ellipse,${renderHex}66 0%,transparent 70%)`}}/>
+            </div>
+
+            <FloatingText texts={renderFloats}/>
+
+            {/* Battle overlay */}
+            {battleInfo&&<BattleScreen info={battleInfo} onDone={handleBattleDone}/>}
+            {bossInfo&&<BossScreen info={bossInfo} onDone={handleBossDone}/>}
+
+            {/* Collection btn */}
+            <button onClick={()=>{ setPrevScreen("playing"); setScreen("collection"); }}
+              style={{position:"absolute",bottom:12,right:12,zIndex:30,
+                background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.12)",
+                borderRadius:8,padding:"5px 10px",fontFamily:"'Bebas Neue',sans-serif",
+                fontSize:12,color:"#a09090",cursor:"pointer",letterSpacing:1}}>
+              🎨 {collection.length}
+            </button>
+          </>
+        )}
+
+        {/* ══ WAVE CLEAR ══ */}
+        {screen==="wave_clear"&&(
+          <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",
+            alignItems:"center",justifyContent:"center",gap:16,padding:28,
+            background:"rgba(3,8,3,0.96)",animation:"slideUp 0.3s ease"}}>
+            <div style={{fontSize:50}}>✓</div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:46,color:"#6bff9e",
+              letterSpacing:3,textShadow:"0 0 30px rgba(107,255,158,0.9)"}}>WAVE {renderWave-1}</div>
+            <div style={{color:"#4a7a4a",fontSize:14}}>
+              Troops: <span style={{color:"#6bff9e",fontFamily:"'Bebas Neue',sans-serif",fontSize:24}}>{G.current.troops.toLocaleString()}</span>
+            </div>
+            <button onClick={()=>startWave(G.current.wave, G.current.level)} style={Btn("#7c3aed","#4c1d95")}>
+              CONTINUE ▶
+            </button>
+          </div>
+        )}
+
+        {/* ══ LEVEL CLEAR ══ */}
+        {screen==="level_clear"&&(
+          <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",
+            alignItems:"center",justifyContent:"center",gap:16,padding:28,
+            background:"linear-gradient(180deg,rgba(3,8,3,0.97),rgba(8,3,20,0.97))",
+            animation:"slideUp 0.3s ease"}}>
+            <div style={{fontSize:52}}>🏆</div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:46,letterSpacing:3,textAlign:"center",
+              background:"linear-gradient(135deg,#ffe66b,#6bff9e)",
+              WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
+              LEVEL {G.current.level}<br/>COMPLETE
+            </div>
+            <div style={{color:"#6bff9e",fontFamily:"'Bebas Neue',sans-serif",fontSize:22}}>
+              {G.current.troops.toLocaleString()} troops
+            </div>
+            <div style={{color:"#5a4878",fontSize:12,textAlign:"center"}}>
+              Troops carry over · {collection.length} hex colors claimed
+            </div>
+            <button onClick={()=>{
+              const g=G.current; g.level++; g.wave=1;
+              setRenderLevel(g.level); setRenderWave(1);
+              setScreen("colorpick");
+            }} style={Btn("#7c3aed","#4c1d95")}>LEVEL {G.current.level+1} ▶</button>
+            <button onClick={()=>{ setPrevScreen("level_clear"); setScreen("collection"); }}
+              style={{...Btn("#1a1030","#0d0820"),fontSize:13,padding:"9px 0",
+                border:"1px solid rgba(255,255,255,0.08)"}}>
+              🎨 COLLECTION ({collection.length})
+            </button>
+          </div>
+        )}
+
+        {/* ══ GAME OVER ══ */}
+        {screen==="game_over"&&(
+          <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",
+            alignItems:"center",justifyContent:"center",gap:16,padding:28,
+            background:"rgba(10,2,2,0.97)",animation:"slideUp 0.3s ease"}}>
+            <div style={{fontSize:54}}>💀</div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:50,color:"#ff6b6b",
+              letterSpacing:3,textShadow:"0 0 30px rgba(255,107,107,0.9)"}}>DEFEATED</div>
+            <div style={{color:"#7a5050",fontSize:13}}>Level {G.current.level} · Wave {G.current.wave}</div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:"#e8d5ff"}}>
+              SCORE {score.toLocaleString()}
+            </div>
+            <button onClick={()=>{ fullReset(); setScreen("colorpick"); }} style={Btn("#7c3aed","#4c1d95")}>TRY AGAIN</button>
+            <button onClick={()=>{ setPrevScreen("game_over"); setScreen("collection"); }}
+              style={{...Btn("#1a1030","#0d0820"),fontSize:13,padding:"9px 0",
+                border:"1px solid rgba(255,255,255,0.08)"}}>
+              🎨 COLLECTION ({collection.length})
+            </button>
+          </div>
+        )}
+
+        {/* ══ COLLECTION ══ */}
+        {screen==="collection"&&(
+          <CollectionScreen collection={collection} onClose={()=>setScreen(prevScreen)}
+            onOpenColoring={()=>setColoringOpen(true)}/>
+        )}
+
+      {/* Coloring studio overlay */}
+      {coloringOpen&&(
+        <ColoringApp collection={collection} unlockedLevels={unlockedLevels}
+          onClose={()=>setColoringOpen(false)}/>
+      )}
+
+      </div>
+    </div>
+  );
+}
+
+function Btn(bg, dark) {
+  return {
+    background:`linear-gradient(135deg,${bg},${dark})`,
+    color:"#fff",border:"none",borderRadius:14,
+    padding:"13px 36px",fontSize:18,
+    fontFamily:"'Bebas Neue',sans-serif",letterSpacing:2,
+    cursor:"pointer",boxShadow:`0 4px 22px ${bg}88`,
+    width:"100%",maxWidth:280,
+  };
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(HexCollector));
+</script>
+</body>
+</html>
