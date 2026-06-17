@@ -1,16 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Hex Collector</title>
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { background: #0a0a14; overflow: hidden; font-family: sans-serif; }
+  body { margin:0; padding:0; background:#030209; overflow:hidden; }
 </style>
-<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
 <body>
 <div id="root"></div>
@@ -95,11 +94,8 @@ function bval(op, wave, level) {
   return 1;
 }
 function enemyCount(wave, level, playerTroops) {
-  // Aggressive scaling — enemies keep pace even at high troop counts
-  // Wave 1 Lvl1: 45%, grows 6% per wave, 15% per level
-  // Wave 10 Lvl1: ~99%. Wave 1 Lvl2: 60%. Keeps fights meaningful.
   const waveScale = 0.45 + (wave - 1) * 0.06 + (level - 1) * 0.15;
-  const base = Math.floor(playerTroops * Math.min(waveScale, 1.4)); // cap at 140%
+  const base = Math.floor(playerTroops * Math.min(waveScale, 1.4));
   const minimum = Math.floor(6 * Math.pow(1.5, wave-1) * (1+(level-1)*0.5));
   return Math.max(minimum, base);
 }
@@ -113,13 +109,12 @@ function troopSpeed(t) {
 
 // ─── Object factories ──────────────────────────────────────────────
 let _id = 0;
-// Weighted family draw: multiply is rare, divide/subtract more common
 function weightedFamily() {
   const r = Math.random();
-  if (r < 0.15) return "green";   // ×  multiply  — 15%
-  if (r < 0.45) return "red";     // +  add        — 30%
-  if (r < 0.75) return "blue";    // ÷  divide     — 30%
-  return "yellow";                 // −  subtract   — 25%
+  if (r < 0.15) return "green";
+  if (r < 0.45) return "red";
+  if (r < 0.75) return "blue";
+  return "yellow";
 }
 function mkBarrier(wave, level, wide, avoid) {
   const fk = weightedFamily();
@@ -153,16 +148,13 @@ function mkEnemy(wave, level, playerTroops) {
            w:90, h:68, x:W/2, y:-80 };
 }
 function bossScale(level) {
-  // Level 1: 0.5x, grows 0.15x per level, surpasses player around level 4-5
   return 0.5 + (level - 1) * 0.15;
 }
 function mkBoss(level, playerTroops) {
   const op = Math.random()<0.5?"power":"root";
-  // val is the exponent — small so numbers stay sane
   const val = op==="power" ? +(1.3+level*0.06).toFixed(2) : 2;
   const scale = bossScale(level);
   const levelBase = level * 20;
-  // Boss army scales with the player — no free ride
   const bossArmy = Math.floor(playerTroops * scale) + levelBase;
   const hex = pickHex("gray");
   return { kind:"boss", id:_id++, op, val, hex,
@@ -211,9 +203,6 @@ function FloatingText({ texts }) {
 
 // ─── Battle screen ─────────────────────────────────────────────────
 function BattleScreen({ info, onDone }) {
-  // info: { playerHex, playerFk, playerTroops,
-  //         enemyHex, enemyFk, enemyCount, enemyOp, enemyVal, enemySym }
-  // Phases: clash → result → op_effect
   const [step, setStep] = useState(0);
   const [survivor, setSurvivor] = useState(null);
   const [afterOp, setAfterOp] = useState(null);
@@ -224,7 +213,6 @@ function BattleScreen({ info, onDone }) {
   const matchColor = result===1?"#6bff9e":result===-1?"#ff6b6b":"#e8d5ff";
   const won = survivor!==null && survivor > 0;
 
-  // Step 1: resolve fight
   useEffect(()=>{
     const t = setTimeout(()=>{
       const atk = result===1?1.6:result===-1?0.6:1.0;
@@ -234,10 +222,8 @@ function BattleScreen({ info, onDone }) {
       setStep(1);
     }, 1200);
     return ()=>clearTimeout(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
-  // Step 2: apply enemy op to survivors (or to 1 if defeated)
   useEffect(()=>{
     if (step===1 && survivor!==null) {
       const t = setTimeout(()=>{
@@ -247,16 +233,13 @@ function BattleScreen({ info, onDone }) {
       }, 1300);
       return ()=>clearTimeout(t);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   },[step, survivor]);
 
-  // Step 3: done
   useEffect(()=>{
     if (step===2 && afterOp!==null) {
       const t = setTimeout(()=>onDone(afterOp, info.enemyOp, info.enemyVal, won), 1500);
       return ()=>clearTimeout(t);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   },[step, afterOp]);
 
   const opDiff = afterOp!==null && survivor!==null ? afterOp - Math.max(1,survivor) : null;
@@ -287,7 +270,6 @@ function BattleScreen({ info, onDone }) {
         </div>
       </div>
 
-      {/* Fight result */}
       {step>=1 && survivor!==null && (
         <div style={{textAlign:"center",animation:"popIn 0.3s ease"}}>
           <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:36,letterSpacing:3,
@@ -301,7 +283,6 @@ function BattleScreen({ info, onDone }) {
         </div>
       )}
 
-      {/* Enemy op fires */}
       {step>=2 && afterOp!==null && (
         <div style={{
           background:`${rgba(info.enemyHex,0.15)}`,
@@ -339,27 +320,21 @@ function BattleScreen({ info, onDone }) {
 
 // ─── Boss screen ───────────────────────────────────────────────────
 function BossScreen({ info, onDone }) {
-  // Phase 1: show modifier (^/√) applied to player troops
-  // Phase 2: show troop-vs-troop result against scaled boss army
-  // info: { troops, op, val, hex, label, level, bossArmy, scale }
-  const [step, setStep] = useState(0); // 0=incoming 1=modifier 2=battle result
+  const [step, setStep] = useState(0);
   const [modifiedTroops, setModifiedTroops] = useState(null);
   const [survivor, setSurvivor] = useState(null);
 
   useEffect(()=>{
-    // Step 1: show modifier result after 1s
     const t1 = setTimeout(()=>{
       const mod = Math.max(1, applyOp(info.troops, info.op, info.val));
       setModifiedTroops(mod);
       setStep(1);
     }, 1000);
     return ()=>clearTimeout(t1);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
   useEffect(()=>{
     if (step===1 && modifiedTroops!==null) {
-      // Step 2: fight result after 1.2s
       const t2 = setTimeout(()=>{
         const rem = Math.max(0, modifiedTroops - info.bossArmy);
         setSurvivor(rem);
@@ -367,7 +342,6 @@ function BossScreen({ info, onDone }) {
       }, 1200);
       return ()=>clearTimeout(t2);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   },[step, modifiedTroops]);
 
   useEffect(()=>{
@@ -375,7 +349,6 @@ function BossScreen({ info, onDone }) {
       const t3 = setTimeout(()=>onDone(survivor), 1800);
       return ()=>clearTimeout(t3);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   },[step, survivor]);
 
   const modDiff = modifiedTroops!==null ? modifiedTroops - info.troops : null;
@@ -393,7 +366,6 @@ function BossScreen({ info, onDone }) {
         display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,
         animation:"pulse 0.6s infinite"}}>⚡</div>
 
-      {/* Phase 1: modifier fires */}
       <div style={{textAlign:"center"}}>
         <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:40,color:"#d0d0d0",
           textShadow:"0 0 20px rgba(200,200,200,0.7)",letterSpacing:2}}>{info.label}</div>
@@ -414,7 +386,6 @@ function BossScreen({ info, onDone }) {
         </div>
       </div>
 
-      {/* Phase 2: vs boss army */}
       {step>=1 && modifiedTroops!==null && (
         <div style={{textAlign:"center",width:"90%",animation:"slideUp 0.3s ease"}}>
           <div style={{color:"#555",fontSize:10,letterSpacing:2,marginBottom:6}}>VS BOSS ARMY ({scaleLabel})</div>
@@ -432,7 +403,6 @@ function BossScreen({ info, onDone }) {
         </div>
       )}
 
-      {/* Phase 3: result */}
       {step===2 && survivor!==null && (
         <div style={{textAlign:"center",animation:"popIn 0.3s ease"}}>
           <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:44,letterSpacing:3,
@@ -457,9 +427,7 @@ const COLORING_PAGES = [
     title: "SOLAR MANDALA",
     unlockLevel: 1,
     regions: [
-      // Center circle
       { id:"c0", d:"M180,180 m-18,0 a18,18 0 1,0 36,0 a18,18 0 1,0 -36,0" },
-      // Inner ring petals (8)
       { id:"p0", d:"M180,162 C174,150 168,148 168,140 C168,132 174,128 180,128 C186,128 192,132 192,140 C192,148 186,150 180,162Z" },
       { id:"p1", d:"M198,162 C208,154 214,150 220,154 C226,158 226,166 220,170 C214,174 208,172 198,162Z" },
       { id:"p2", d:"M198,180 C210,174 214,168 222,170 C230,172 232,180 228,186 C224,192 216,192 198,180Z" },
@@ -468,7 +436,6 @@ const COLORING_PAGES = [
       { id:"p5", d:"M162,198 C152,206 146,206 142,200 C138,194 140,186 148,184 C156,182 160,190 162,198Z" },
       { id:"p6", d:"M162,180 C150,176 146,170 148,162 C150,154 158,150 164,154 C170,158 170,166 162,180Z" },
       { id:"p7", d:"M162,162 C154,152 154,144 160,140 C166,136 174,138 176,146 C178,154 172,158 162,162Z" },
-      // Middle ring (8 diamonds)
       { id:"m0", d:"M180,108 L192,124 L180,140 L168,124Z" },
       { id:"m1", d:"M220,120 L228,138 L212,142 L204,124Z" },
       { id:"m2", d:"M244,154 L244,172 L228,172 L224,154Z" },
@@ -477,7 +444,6 @@ const COLORING_PAGES = [
       { id:"m5", d:"M162,228 L148,216 L156,202 L172,210Z" },
       { id:"m6", d:"M128,200 L122,182 L138,178 L146,196Z" },
       { id:"m7", d:"M120,158 L132,144 L146,156 L136,172Z" },
-      // Outer ring arcs (8)
       { id:"o0", d:"M180,88 C196,88 210,94 220,104 L208,116 C200,108 190,104 180,104 C170,104 160,108 152,116 L140,104 C150,94 164,88 180,88Z" },
       { id:"o1", d:"M252,116 C260,128 264,142 264,156 L248,156 C248,146 246,136 240,126Z" },
       { id:"o2", d:"M264,180 C264,196 258,210 248,220 L238,208 C246,200 250,190 250,180Z" },
@@ -493,16 +459,13 @@ const COLORING_PAGES = [
     title: "CRYSTAL GRID",
     unlockLevel: 1,
     regions: [
-      // Center hexagon
       { id:"h0", d:"M180,160 L206,175 L206,205 L180,220 L154,205 L154,175Z" },
-      // 6 surrounding hexagons
       { id:"h1", d:"M180,100 L206,115 L206,145 L180,160 L154,145 L154,115Z" },
       { id:"h2", d:"M232,130 L258,145 L258,175 L232,190 L206,175 L206,145Z" },
       { id:"h3", d:"M232,190 L258,205 L258,235 L232,250 L206,235 L206,205Z" },
       { id:"h4", d:"M180,220 L206,235 L206,265 L180,280 L154,265 L154,235Z" },
       { id:"h5", d:"M128,190 L154,205 L154,235 L128,250 L102,235 L102,205Z" },
       { id:"h6", d:"M128,130 L154,145 L154,175 L128,190 L102,175 L102,145Z" },
-      // Triangle connectors between hexagons
       { id:"t0", d:"M180,100 L206,115 L180,130 L154,115Z" },
       { id:"t1", d:"M206,115 L232,130 L219,145 L206,130Z" },
       { id:"t2", d:"M232,130 L258,145 L245,160 L232,145Z" },
@@ -511,7 +474,6 @@ const COLORING_PAGES = [
       { id:"t5", d:"M154,235 L154,265 L128,250 L141,235Z" },
       { id:"t6", d:"M102,205 L128,220 L115,205 L102,190Z" },
       { id:"t7", d:"M102,145 L128,160 L115,175 L102,160Z" },
-      // Corner diamonds
       { id:"d0", d:"M180,60 L196,80 L180,100 L164,80Z" },
       { id:"d1", d:"M268,108 L286,128 L268,148 L250,128Z" },
       { id:"d2", d:"M268,232 L286,252 L268,272 L250,252Z" },
@@ -524,9 +486,9 @@ const COLORING_PAGES = [
 
 function ColoringApp({ collection, unlockedLevels, onClose }) {
   const [pageIdx, setPageIdx] = useState(0);
-  const [fills, setFills] = useState({}); // { pageId_regionId: hex }
+  const [fills, setFills] = useState({});
   const [selectedHex, setSelectedHex] = useState(null);
-  const [tab, setTab] = useState("paint"); // paint | palette
+  const [tab, setTab] = useState("paint");
 
   const page = COLORING_PAGES[pageIdx];
   const isUnlocked = unlockedLevels >= page.unlockLevel;
@@ -547,7 +509,6 @@ function ColoringApp({ collection, unlockedLevels, onClose }) {
     <div style={{position:"absolute",inset:0,zIndex:85,background:"#06040f",
       display:"flex",flexDirection:"column",overflow:"hidden"}}>
 
-      {/* Header */}
       <div style={{padding:"12px 16px 8px",borderBottom:"1px solid rgba(255,255,255,0.07)",
         display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
         <div>
@@ -563,7 +524,6 @@ function ColoringApp({ collection, unlockedLevels, onClose }) {
         </button>
       </div>
 
-      {/* Page selector */}
       <div style={{display:"flex",gap:6,padding:"8px 14px",flexShrink:0,
         borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
         {COLORING_PAGES.map((p,i)=>(
@@ -577,7 +537,6 @@ function ColoringApp({ collection, unlockedLevels, onClose }) {
         ))}
       </div>
 
-      {/* Canvas */}
       <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",
         background:"#0d0a18",position:"relative",overflow:"hidden"}}>
         {!isUnlocked ? (
@@ -590,9 +549,7 @@ function ColoringApp({ collection, unlockedLevels, onClose }) {
         ) : (
           <svg width="360" height="360" viewBox="80 50 200 300"
             style={{display:"block",cursor:selectedHex?"crosshair":"default"}}>
-            {/* White base */}
             <rect x="80" y="50" width="200" height="300" fill="#f8f6ff" rx="8"/>
-            {/* Regions */}
             {page.regions.map(r=>(
               <path key={r.id} d={r.d}
                 fill={getColor(r.id)}
@@ -607,7 +564,6 @@ function ColoringApp({ collection, unlockedLevels, onClose }) {
                 }}
               />
             ))}
-            {/* Completion shimmer overlay */}
             {pct===100&&(
               <rect x="80" y="50" width="200" height="300" rx="8"
                 fill="none" stroke="#ffe66b" strokeWidth="2.5"
@@ -618,9 +574,7 @@ function ColoringApp({ collection, unlockedLevels, onClose }) {
         )}
       </div>
 
-      {/* Bottom palette */}
       <div style={{flexShrink:0,borderTop:"1px solid rgba(255,255,255,0.07)"}}>
-        {/* Tabs */}
         <div style={{display:"flex",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
           {["paint","palette"].map(t=>(
             <button key={t} onClick={()=>setTab(t)} style={{
@@ -806,13 +760,10 @@ function ColorPicker({ collection, level, troops, onPick }) {
 
 // ═══════════════════════════════════════════════════════════════════
 // MAIN GAME
-// All game state lives in refs. React state is only used for rendering.
 // ═══════════════════════════════════════════════════════════════════
 function HexCollector() {
 
-  // ── Render state ──
   const [screen, setScreen]           = useState("title");
-  // screens: title | colorpick | playing | battle | boss | wave_clear | level_clear | game_over | win | collection
   const [renderTroops, setRenderTroops]     = useState(10);
   const [renderHex,    setRenderHex]        = useState("#FF6B6B");
   const [renderFk,     setRenderFk]         = useState("red");
@@ -830,7 +781,6 @@ function HexCollector() {
   const [coloringOpen, setColoringOpen]     = useState(false);
   const [unlockedLevels, setUnlockedLevels] = useState(1);
 
-  // ── Game refs (source of truth) ──
   const G = useRef({
     troops: 10,
     hex: "#FF6B6B",
@@ -838,8 +788,8 @@ function HexCollector() {
     playerX: W/2,
     wave: 1,
     level: 1,
-    objects: [],       // all on-screen objects
-    queue: [],         // spawn queue for current wave
+    objects: [],
+    queue: [],
     queueIdx: 0,
     spawnTimer: 0,
     usedHex: [],
@@ -851,7 +801,6 @@ function HexCollector() {
   const floatIdRef  = useRef(0);
   const floatsRef   = useRef([]);
 
-  // ── Helpers ──
   function pushFloat(x, y, text, color) {
     const id = floatIdRef.current++;
     const entry = {id, x, y, text, color};
@@ -871,7 +820,6 @@ function HexCollector() {
     setShake(true); setTimeout(()=>setShake(false),420);
   }
 
-  // ── Start wave ──
   function startWave(wave, level) {
     const g = G.current;
     g.wave = wave;
@@ -891,7 +839,6 @@ function HexCollector() {
     setScreen("playing");
   }
 
-  // ── Pointer ──
   const handlePointerMove = useCallback((e)=>{
     if (G.current.screen !== "playing") return;
     const clientX = e.clientX ?? e.touches?.[0]?.clientX;
@@ -901,7 +848,6 @@ function HexCollector() {
       Math.min(W-PLAYER_W/2, ((clientX-rect.left)/rect.width)*W));
   },[]);
 
-  // ── Battle done ──
   const handleBattleDone = useCallback((remaining, enemyOp, enemyVal, won)=>{
     const g = G.current;
     g.inBattle = false;
@@ -910,7 +856,6 @@ function HexCollector() {
       g.troops=0; setRenderTroops(0);
       g.screen="game_over"; setScreen("game_over");
     } else {
-      // Apply enemy color op after battle — reward on win, penalty on loss
       const afterOp = applyOp(Math.max(1, remaining), enemyOp, enemyVal);
       g.troops = afterOp;
       setRenderTroops(afterOp);
@@ -920,7 +865,6 @@ function HexCollector() {
     }
   },[]);
 
-  // ── Boss done ──
   const handleBossDone = useCallback((after)=>{
     const g = G.current;
     g.inBattle = false;
@@ -936,7 +880,6 @@ function HexCollector() {
     }
   },[]);
 
-  // ── RAF game loop ──
   useEffect(()=>{
     if (screen!=="playing") {
       cancelAnimationFrame(rafRef.current);
@@ -956,7 +899,6 @@ function HexCollector() {
       const speed = troopSpeed(g.troops);
       setInfiniteMode(g.troops >= INFINITE_THRESHOLD);
 
-      // ── Spawn ──
       const spawnInterval = Math.max(500, 1800 - g.troops*0.4);
       g.spawnTimer += dt;
       if (g.spawnTimer >= spawnInterval && g.queueIdx < g.queue.length) {
@@ -971,7 +913,6 @@ function HexCollector() {
         g.objects = [...g.objects, ...spawned];
       }
 
-      // ── Move + collide ──
       const px = g.playerX;
       const kept = [];
       let troopDelta = 0;
@@ -998,7 +939,6 @@ function HexCollector() {
             newFk  = obj.fk;
             claims.push(obj.hex);
             if (diff<0) doShake();
-            // consumed: not pushed to kept
           } else if (ny <= H+10) {
             kept.push({...obj, y:ny});
           }
@@ -1009,7 +949,6 @@ function HexCollector() {
           if (hitY && hitX && !g.inBattle) {
             g.inBattle = true;
             battleTarget = obj;
-            // consumed
           } else if (ny <= H+10) {
             kept.push({...obj, y:ny});
           }
@@ -1019,14 +958,12 @@ function HexCollector() {
           if (hitY && !g.inBattle) {
             g.inBattle = true;
             bossTarget = obj;
-            // consumed
           } else if (ny <= H+10) {
             kept.push({...obj, y:ny});
           }
         }
       }
 
-      // ── Commit ──
       g.objects = kept;
 
       if (troopDelta!==0) {
@@ -1056,7 +993,6 @@ function HexCollector() {
                       bossArmy:bossTarget.bossArmy, scale:bossScale(g.level) });
       }
 
-      // ── Wave complete ──
       if (g.queueIdx >= g.queue.length && g.objects.length===0 && !g.inBattle) {
         const next = g.wave+1;
         if (next > WAVES_PER_LEVEL+1) {
@@ -1074,10 +1010,8 @@ function HexCollector() {
 
     rafRef.current = requestAnimationFrame(loop);
     return ()=>cancelAnimationFrame(rafRef.current);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   },[screen]);
 
-  // ── Shared reset ──
   function fullReset() {
     const g = G.current;
     g.troops=10; g.hex="#FF6B6B"; g.fk="red";
@@ -1117,13 +1051,11 @@ function HexCollector() {
           touchAction:"none",userSelect:"none",
           transition:"box-shadow 0.5s"}}>
 
-        {/* bg grid */}
         <div style={{position:"absolute",inset:0,pointerEvents:"none",
           backgroundImage:"linear-gradient(rgba(255,255,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.025) 1px,transparent 1px)",
           backgroundSize:"44px 44px",
           animation:infiniteMode?`scroll ${Math.max(0.3,2-troopSpeed(renderTroops)/8)}s linear infinite`:"none"}}/>
 
-        {/* ══ TITLE ══ */}
         {screen==="title"&&(
           <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",
             alignItems:"center",justifyContent:"center",gap:14,padding:"28px 24px",
@@ -1177,7 +1109,6 @@ function HexCollector() {
           </div>
         )}
 
-        {/* ══ COLOR PICK ══ */}
         {screen==="colorpick"&&(
           <ColorPicker collection={collection} level={G.current.level} troops={G.current.troops}
             onPick={(hex)=>{
@@ -1188,10 +1119,8 @@ function HexCollector() {
             }}/>
         )}
 
-        {/* ══ PLAYING ══ */}
         {screen==="playing"&&(
           <>
-            {/* HUD top */}
             <div style={{position:"absolute",top:0,left:0,right:0,padding:"10px 14px 6px",
               zIndex:20,background:"linear-gradient(180deg,rgba(0,0,0,0.7),transparent)",
               display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
@@ -1233,7 +1162,6 @@ function HexCollector() {
               </div>
             )}
 
-            {/* Objects */}
             {renderObjs.map(obj=>{
               if (obj.kind==="barrier") return (
                 <div key={obj.id} style={{position:"absolute",left:obj.x-obj.w/2,top:obj.y,
@@ -1285,7 +1213,6 @@ function HexCollector() {
               return null;
             })}
 
-            {/* Player */}
             <div style={{position:"absolute",left:G.current.playerX-PLAYER_W/2,top:PLAYER_Y-16,
               width:PLAYER_W,textAlign:"center",pointerEvents:"none",zIndex:25}}>
               <div style={{width:PLAYER_W,height:36,borderRadius:10,
@@ -1302,11 +1229,9 @@ function HexCollector() {
 
             <FloatingText texts={renderFloats}/>
 
-            {/* Battle overlay */}
             {battleInfo&&<BattleScreen info={battleInfo} onDone={handleBattleDone}/>}
             {bossInfo&&<BossScreen info={bossInfo} onDone={handleBossDone}/>}
 
-            {/* Collection btn */}
             <button onClick={()=>{ setPrevScreen("playing"); setScreen("collection"); }}
               style={{position:"absolute",bottom:12,right:12,zIndex:30,
                 background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.12)",
@@ -1317,7 +1242,6 @@ function HexCollector() {
           </>
         )}
 
-        {/* ══ WAVE CLEAR ══ */}
         {screen==="wave_clear"&&(
           <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",
             alignItems:"center",justifyContent:"center",gap:16,padding:28,
@@ -1334,7 +1258,6 @@ function HexCollector() {
           </div>
         )}
 
-        {/* ══ LEVEL CLEAR ══ */}
         {screen==="level_clear"&&(
           <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",
             alignItems:"center",justifyContent:"center",gap:16,padding:28,
@@ -1365,7 +1288,6 @@ function HexCollector() {
           </div>
         )}
 
-        {/* ══ GAME OVER ══ */}
         {screen==="game_over"&&(
           <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",
             alignItems:"center",justifyContent:"center",gap:16,padding:28,
@@ -1386,13 +1308,11 @@ function HexCollector() {
           </div>
         )}
 
-        {/* ══ COLLECTION ══ */}
         {screen==="collection"&&(
           <CollectionScreen collection={collection} onClose={()=>setScreen(prevScreen)}
             onOpenColoring={()=>setColoringOpen(true)}/>
         )}
 
-      {/* Coloring studio overlay */}
       {coloringOpen&&(
         <ColoringApp collection={collection} unlockedLevels={unlockedLevels}
           onClose={()=>setColoringOpen(false)}/>
