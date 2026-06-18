@@ -5,7 +5,7 @@
       "tagline": "One tap. One spark. Infinite upgrades.",
       "description": "Tap the anvil to forge raw ore into items, then merge identical items to create rarer gear. An idle loop keeps progress flowing even when you're away, with satisfying visual bursts on every forge.",
       "genre": "Hyper-casual idle",
-      "coreLoop": "Tap to forge \u2192 merge duplicates \u2192 sell for coins \u2192 unlock faster forge speeds",
+      "coreLoop": "Tap to forge → merge duplicates → sell for coins → unlock faster forge speeds",
       "elements": [
         "tap-to-craft",
         "merge mechanic",
@@ -14,28 +14,30 @@
         "prestige reset"
       ],
       "aesthetics": "Deep charcoal background, molten orange glow on items, sparks and ember particles, short punchy metallic sound on each tap",
-      "buildPrompt": "Build a single-file HTML5 mobile-first idle game called 'Tap Forge'. Dark theme (#0d0d0d background, #ff6b1a accent). Layout: top bar shows coins + passive income/sec; center is a 4x6 grid of item slots; bottom has a glowing anvil button. Mechanics: tap anvil to spawn a tier-1 item in any empty slot; drag two identical items together to merge into the next tier (10 tiers: ore\u2192ingot\u2192sword\u2192...\u2192legendary); selling an item gives coins equal to 1.5^tier; idle income = sum of all items' sell value * 0.05/sec. Add particle sparks on tap and a screen shake on merge. Touch drag and mouse drag both work. 60fps via requestAnimationFrame. All assets CSS/emoji \u2014 no external images. Show a small '+coins' float text on sell. Prestige button appears at tier-8+ items: resets grid but gives a permanent x1.5 multiplier shown in top bar.",
+      "buildPrompt": "Build a single-file HTML5 mobile-first idle game called 'Tap Forge'. Dark theme (#0d0d0d background, #ff6b1a accent). Layout: top bar shows coins + passive income/sec; center is a 4x6 grid of item slots; bottom has a glowing anvil button. Mechanics: tap anvil to spawn a tier-1 item in any empty slot; drag two identical items together to merge into the next tier (10 tiers: ore→ingot→sword→...→legendary); selling an item gives coins equal to 1.5^tier; idle income = sum of all items' sell value * 0.05/sec. Add particle sparks on tap and a screen shake on merge. Touch drag and mouse drag both work. 60fps via requestAnimationFrame. All assets CSS/emoji — no external images. Show a small '+coins' float text on sell. Prestige button appears at tier-8+ items: resets grid but gives a permanent x1.5 multiplier shown in top bar.",
       "profitability": 4,
       "easeToBuild": 5,
       "speedToBuild": 5,
       "enjoyment": 4,
-      "reasoning": "Idle+merge is proven ad gold \u2014 inter-level ads and rewarded ads for coin boosts fit naturally. One-file build is straightforward: grid, drag logic, idle timer. Very fast to build, highly playable.",
+      "reasoning": "Idle+merge is proven ad gold — inter-level ads and rewarded ads for coin boosts fit naturally. One-file build is straightforward: grid, drag logic, idle timer. Very fast to build, highly playable.",
       "aiScore": "4.5",
       "id": "c48ba976a043",
       "userScore": null,
       "userFeedback": "",
       "status": "built",
       "createdAt": "2026-06-14T05:11:12Z",
-      "builtAt": "2026-06-14T06:16:17Z",
+      "builtAt": "2026-06-15T06:14:34Z",
       "htmlFile": "built/c48ba976a043.html",
-      "refinements": []
+      "refinements": [
+        "Refinement 2026-06-15 — Added Web Audio sounds (forge/merge/sell/prestige), Auto-Forge upgrade (auto-taps anvil), Lucky Forge upgrade (15% tier-2 chance), merge pop animation, ring particles on high-tier merges, floating merge label with tier name, mobile double-forge fix, start with 3 items, coin pulse feedback, prestige particle burst"
+      ]
     },
     {
       "title": "Neon Cascade",
       "tagline": "Match the glow before the dark wins.",
-      "description": "Neon-colored geometric tiles fall from the top; swipe to slide columns left/right so falling tiles connect with 3+ matching tiles already on the board. Chain reactions explode in cascading light. The board fills slowly \u2014 survive as long as possible.",
+      "description": "Neon-colored geometric tiles fall from the top; swipe to slide columns left/right so falling tiles connect with 3+ matching tiles already on the board. Chain reactions explode in cascading light. The board fills slowly — survive as long as possible.",
       "genre": "Match/Puzzle",
-      "coreLoop": "Spot falling tile color \u2192 swipe column to align \u2192 trigger chain cascade \u2192 score multiplier",
+      "coreLoop": "Spot falling tile color → swipe column to align → trigger chain cascade → score multiplier",
       "elements": [
         "column swipe",
         "color matching",
@@ -56,16 +58,16 @@
       "userFeedback": "",
       "status": "built",
       "createdAt": "2026-06-14T05:11:12Z",
-      "builtAt": "2026-06-14T06:16:17Z",
+      "builtAt": "2026-06-15T06:14:34Z",
       "htmlFile": "built/c48ba977bae1.html",
       "refinements": []
     },
     {
       "title": "Void Dash",
       "tagline": "Flip gravity. Outrun the dark.",
-      "description": "An endless side-scrolling runner set in a crumbling void dimension. Tap once to flip gravity \u2014 your glowing orb soars to the ceiling or drops to the floor. Obstacles come in pairs from both surfaces; collect void shards for power-ups. Distance is the score.",
+      "description": "An endless side-scrolling runner set in a crumbling void dimension. Tap once to flip gravity — your glowing orb soars to the ceiling or drops to the floor. Obstacles come in pairs from both surfaces; collect void shards for power-ups. Distance is the score.",
       "genre": "Hyper-casual runner",
-      "coreLoop": "Tap to flip gravity \u2192 thread the gap \u2192 collect shard \u2192 activate power-up",
+      "coreLoop": "Tap to flip gravity → thread the gap → collect shard → activate power-up",
       "elements": [
         "gravity flip",
         "endless procedural obstacles",
@@ -74,7 +76,7 @@
         "high score chase"
       ],
       "aesthetics": "Black background with deep-purple gradient depth, electric-blue orb trail, white obstacle outlines with neon edge glow, lo-fi electronic loop with reactive beat on flip",
-      "buildPrompt": "Build a single-file HTML5 mobile-first endless runner called 'Void Dash'. Canvas-based, 60fps via requestAnimationFrame. Background: black with subtle purple star parallax (2 layers). Player: a 20px glowing circle (electric blue, CSS radial glow) that has constant rightward momentum; tapping/clicking flips gravity (accelerates up or down at 0.5px/frame\u00b2) capped at \u00b18px/frame. Obstacles: pairs of rectangular bars from top and bottom with a randomized gap (height 120-180px); spawn every 300px of scroll distance; scroll speed starts at 4px/frame, increases by 0.1 every 500px. Void shards: small diamond shapes in the gap center; collecting grants one of: ghost (2s invincibility, blue tint), slow (0.5x speed 3s), or magnet (pulls nearby shards). HUD: distance counter top-left, best top-right. Touch tap and spacebar both flip gravity. Death: orb hits top/bottom wall or obstacle \u2192 particle burst \u2192 show score overlay with restart. No external assets.",
+      "buildPrompt": "Build a single-file HTML5 mobile-first endless runner called 'Void Dash'. Canvas-based, 60fps via requestAnimationFrame. Background: black with subtle purple star parallax (2 layers). Player: a 20px glowing circle (electric blue, CSS radial glow) that has constant rightward momentum; tapping/clicking flips gravity (accelerates up or down at 0.5px/frame²) capped at ±8px/frame. Obstacles: pairs of rectangular bars from top and bottom with a randomized gap (height 120-180px); spawn every 300px of scroll distance; scroll speed starts at 4px/frame, increases by 0.1 every 500px. Void shards: small diamond shapes in the gap center; collecting grants one of: ghost (2s invincibility, blue tint), slow (0.5x speed 3s), or magnet (pulls nearby shards). HUD: distance counter top-left, best top-right. Touch tap and spacebar both flip gravity. Death: orb hits top/bottom wall or obstacle → particle burst → show score overlay with restart. No external assets.",
       "profitability": 4,
       "easeToBuild": 4,
       "speedToBuild": 4,
@@ -84,10 +86,10 @@
       "id": "c48ba9786038",
       "userScore": null,
       "userFeedback": "",
-      "status": "built",
+      "status": "idea",
       "createdAt": "2026-06-14T05:11:12Z",
-      "builtAt": "2026-06-14T06:16:17Z",
-      "htmlFile": "built/c48ba9786038.html",
+      "builtAt": null,
+      "htmlFile": null,
       "refinements": []
     },
     {
@@ -95,7 +97,7 @@
       "tagline": "Combine ancient power. Automate the apocalypse.",
       "description": "Place relics on a 5x5 grid and drag matching pairs together to merge into a more powerful artifact. Higher-tier relics passively generate dark essence, which auto-purchases new relics. Unlock legendary artifacts to trigger screen-wide events that multiply all production.",
       "genre": "Merge idle",
-      "coreLoop": "Drag-merge relics \u2192 unlock higher tiers \u2192 earn passive essence \u2192 auto-buy \u2192 trigger legendary event",
+      "coreLoop": "Drag-merge relics → unlock higher tiers → earn passive essence → auto-buy → trigger legendary event",
       "elements": [
         "drag-to-merge",
         "passive idle income",
@@ -104,7 +106,7 @@
         "essence currency"
       ],
       "aesthetics": "Dark stone texture background, relics glow from dim amber (tier 1) to blinding white (tier 12), arcane particle aura on high tiers, deep resonant hum escalating with tier",
-      "buildPrompt": "Build a single-file HTML5 mobile-first merge idle game called 'Merge Relic'. Dark grey textured background (CSS noise), title bar shows Essence count + /sec rate. Main area: 5x5 grid of relic slots (touch drag and mouse drag to merge). 12 relic tiers, each represented by a glowing emoji (\ud83e\udea8\u2192\u2697\ufe0f\u2192\ud83d\udd2e\u2192\ud83d\udc8e\u2192\u26a1\u2192\ud83c\udf11\u2192\ud83c\udf1f\u2192\u2604\ufe0f\u2192\ud83d\udd31\u2192\ud83d\udc41\ufe0f\u2192\ud83c\udf00\u2192\ud83d\udca0). Merging two identical relics creates next tier in target slot. Each relic passively generates Essence/sec: tier^2 * 0.1. Essence auto-purchases a random tier-1 relic every (100 / income_rate) seconds into any empty slot. Manual buy button (costs 10 Essence) below grid. Legendary event: when any tier-10+ relic is merged, a 5-second animation darkens screen and shows arcane text, then multiplies all essence production by 1.5 (stacks). Save/load via localStorage. 60fps idle timer. Show floating +essence numbers from each relic every 2 seconds.",
+      "buildPrompt": "Build a single-file HTML5 mobile-first merge idle game called 'Merge Relic'. Dark grey textured background (CSS noise), title bar shows Essence count + /sec rate. Main area: 5x5 grid of relic slots (touch drag and mouse drag to merge). 12 relic tiers, each represented by a glowing emoji (🪨→⚗️→🔮→💎→⚡→🌑→🌟→☄️→🔱→👁️→🌀→💠). Merging two identical relics creates next tier in target slot. Each relic passively generates Essence/sec: tier^2 * 0.1. Essence auto-purchases a random tier-1 relic every (100 / income_rate) seconds into any empty slot. Manual buy button (costs 10 Essence) below grid. Legendary event: when any tier-10+ relic is merged, a 5-second animation darkens screen and shows arcane text, then multiplies all essence production by 1.5 (stacks). Save/load via localStorage. 60fps idle timer. Show floating +essence numbers from each relic every 2 seconds.",
       "profitability": 5,
       "easeToBuild": 3,
       "speedToBuild": 3,
@@ -123,9 +125,9 @@
     {
       "title": "Echo Tower",
       "tagline": "Bounce beams. Chain kills. Hold the void.",
-      "description": "A tower defense where your towers fire bouncing energy beams that ricochet off walls and other towers. Position reflector towers to chain beam kills across waves of void creatures. Each wave brings faster, denser enemies \u2014 build smarter, not just more.",
+      "description": "A tower defense where your towers fire bouncing energy beams that ricochet off walls and other towers. Position reflector towers to chain beam kills across waves of void creatures. Each wave brings faster, denser enemies — build smarter, not just more.",
       "genre": "Tower defense / roguelite",
-      "coreLoop": "Place tower \u2192 aim bounce angle \u2192 trigger multi-kill chain \u2192 earn crystals \u2192 upgrade or add tower",
+      "coreLoop": "Place tower → aim bounce angle → trigger multi-kill chain → earn crystals → upgrade or add tower",
       "elements": [
         "beam reflection",
         "wave escalation",
@@ -134,7 +136,7 @@
         "boss waves"
       ],
       "aesthetics": "Matte-black grid arena, towers are glowing geometric shapes, beams are thin bright lines with motion blur trail, enemies are dark organic blobs with red health bars, synthesizer sting on multi-kill",
-      "buildPrompt": "Build a single-file HTML5 mobile-first tower defense game called 'Echo Tower'. 800x600 canvas scaled to fit screen. Dark grid arena (subtle #111 lines on #0a0a0a). Towers: up to 8 placeable on any grid intersection; each is a 30px hexagon; tap empty intersection to place (costs 50 crystals); each fires a beam every 1.5s; beam travels at 400px/s, bounces off arena walls up to 5 times, damages the first enemy it hits (10 dmg); second tower type: Reflector (100 crystals) \u2014 doesn't fire but reflects beams at 90\u00b0, allowing complex chains. Enemies: 20px blobs spawn from the left edge, walk right at 40px/s toward the right edge; reaching right edge costs 1 life (start 10); 8 enemy types across waves (increasing HP: 20\u2192500); boss every 5 waves (5x HP, 0.5x speed, drops 200 crystals). Crystals: 10 per kill; shown top-left. Lives shown top-right. Beam chain kills (3+ enemies) trigger 'CHAIN x3' overlay text and bonus crystals. Touch tap to place towers, drag to pan on mobile. Wave counter top-center. Game over screen with wave reached.",
+      "buildPrompt": "Build a single-file HTML5 mobile-first tower defense game called 'Echo Tower'. 800x600 canvas scaled to fit screen. Dark grid arena (subtle #111 lines on #0a0a0a). Towers: up to 8 placeable on any grid intersection; each is a 30px hexagon; tap empty intersection to place (costs 50 crystals); each fires a beam every 1.5s; beam travels at 400px/s, bounces off arena walls up to 5 times, damages the first enemy it hits (10 dmg); second tower type: Reflector (100 crystals) — doesn't fire but reflects beams at 90°, allowing complex chains. Enemies: 20px blobs spawn from the left edge, walk right at 40px/s toward the right edge; reaching right edge costs 1 life (start 10); 8 enemy types across waves (increasing HP: 20→500); boss every 5 waves (5x HP, 0.5x speed, drops 200 crystals). Crystals: 10 per kill; shown top-left. Lives shown top-right. Beam chain kills (3+ enemies) trigger 'CHAIN x3' overlay text and bonus crystals. Touch tap to place towers, drag to pan on mobile. Wave counter top-center. Game over screen with wave reached.",
       "profitability": 3,
       "easeToBuild": 3,
       "speedToBuild": 3,
@@ -149,13 +151,163 @@
       "builtAt": null,
       "htmlFile": null,
       "refinements": []
+    },
+    {
+      "title": "Overload",
+      "tagline": "Tap to charge. Chain to explode. Never stop.",
+      "description": "A dark reactor core sits in the center — tap it to generate power nodes that spread across a grid. Connect nodes to form chains; when a chain reaches critical mass it overloads in a satisfying cascade of light and score. Idle income trickles in from stable nodes while you set up the next big chain.",
+      "genre": "Hyper-casual idle / clicker",
+      "coreLoop": "Tap core to spawn power node, connect chain, trigger overload cascade, collect bonus, idle income trickles, upgrade core",
+      "elements": [
+        "tap-to-spawn nodes",
+        "chain connection",
+        "overload cascade",
+        "idle trickle income",
+        "core upgrades"
+      ],
+      "aesthetics": "Near-black background, electric teal nodes pulsing with energy, neon-white chain lines, screen-flash and shockwave on overload, deep bass boom SFX",
+      "buildPrompt": "Build a single-file HTML5 mobile-first idle clicker called 'Overload'. Dark background (#080810), electric teal (#00ffe0) accents. Canvas-based 60fps via requestAnimationFrame. Layout: central glowing reactor circle (80px) player taps to generate nodes; 12x20 grid of potential node positions. Mechanics: tap reactor to spawn a node at a random adjacent empty grid cell; nodes auto-connect to adjacent same-color nodes forming chains; when a chain reaches 5+ nodes it overloads — all chain nodes flash white, emit radial shockwave animation, score += chain_length^2 * 10, nodes are cleared; idle income = sum of all stable nodes * 0.5 score/sec shown in top bar; spend score on: faster node spread (auto-spawns 1 node/3sec, upgradeable), node multiplier (x1.5 score per overload, stacks), or chain length threshold reduction (trigger at 4 nodes, then 3). Touch tap and mouse click both work on reactor. Show floating score pop-ups on overload. Combo text overlay for chains of 8+. Game never ends — leaderboard is your total score at 5min mark shown at bottom.",
+      "profitability": 4,
+      "easeToBuild": 5,
+      "speedToBuild": 5,
+      "enjoyment": 4,
+      "reasoning": "Pure tap+idle loop with a strong visual payoff moment (overload cascade) is textbook ad-revenue design. Rewarded ads for 'double overload bonus' fit naturally. Single canvas, no complex physics — very fast to build. Endless format means high session length.",
+      "aiScore": "4.5",
+      "id": "c9b771c0cd2c",
+      "userScore": null,
+      "userFeedback": "",
+      "status": "built",
+      "createdAt": "2026-06-15T05:18:23Z",
+      "builtAt": "2026-06-15T06:14:34Z",
+      "htmlFile": "built/c9b771c0cd2c.html",
+      "refinements": []
+    },
+    {
+      "title": "Pulse Grid",
+      "tagline": "Redirect the energy. Survive the surge.",
+      "description": "A dark grid floods with colored energy pulses moving in set directions. Tap any cell to rotate its channel 90 degrees, redirecting the flow before pulses collide and detonate. Chain redirects trigger combo bursts. Speed escalates every 30 seconds until the grid overwhelms you.",
+      "genre": "Hyper-casual puzzle / reflex",
+      "coreLoop": "Spot incoming pulse collision, tap cell to rotate channel, redirect to empty path, chain 3+ for combo, earn time bonus",
+      "elements": [
+        "tap-to-rotate",
+        "pulse routing",
+        "chain combos",
+        "speed escalation",
+        "time survival"
+      ],
+      "aesthetics": "Matte black grid, pulses are vivid neon lines (red, blue, green, yellow), rotation animation is a quarter-circle snap, collision is a contained explosion flash, lo-fi synth click on each rotation",
+      "buildPrompt": "Build a single-file HTML5 mobile-first puzzle game called 'Pulse Grid'. Pure black background, neon pulse colors. 8x8 grid rendered on canvas, 60fps via requestAnimationFrame. Each cell has a channel direction (N, E, S, W) shown as an arrow glyph. Tap a cell to rotate its direction 90deg clockwise (animated 150ms). Pulses: 1 new pulse spawns every 1.5s from a random edge cell moving inward in the cell's channel direction; pulses move one cell per 0.4s; when a pulse enters a cell it takes that cell's channel direction and continues; if a pulse would exit the grid it disappears (good); if two pulses enter the same cell simultaneously they collide — game over flash + score screen. Chain scoring: track consecutive cells a pulse passes through; 3+ chain = score * 1.5; 5+ = score * 3; show chain count as floating text. Speed mode: every 30s spawn rate increases by 10% and pulse move speed by 5%. HUD: score top-left, time survived top-right, chain multiplier top-center. Touch tap and mouse click both rotate cells. Game over shows score + best + retry.",
+      "profitability": 4,
+      "easeToBuild": 4,
+      "speedToBuild": 4,
+      "enjoyment": 5,
+      "reasoning": "Reflex puzzle is a proven high-engagement genre; interstitial ads on game-over fire frequently as sessions are short. The tap-to-rotate mechanic is intuitive yet deep. Grid + pulse logic is manageable in a single file. High enjoyment from the 'just one more try' loop.",
+      "aiScore": "4.2",
+      "id": "c9b771c0da68",
+      "userScore": null,
+      "userFeedback": "",
+      "status": "idea",
+      "createdAt": "2026-06-15T05:18:23Z",
+      "builtAt": null,
+      "htmlFile": null,
+      "refinements": []
+    },
+    {
+      "title": "Shard Ascent",
+      "tagline": "Fling crystals. Build your stairway to nothing.",
+      "description": "You are at the bottom of an infinite dark void. Tap to launch crystal shards that embed in the walls as platforms. Jump between shards to climb higher, but the oldest shards crumble away — so you must keep launching upward or the floor swallows you. Collect floating glyphs on the way up for upgrades.",
+      "genre": "Endless climber / hyper-casual",
+      "coreLoop": "Tap wall to embed shard, jump to shard, launch more shards higher, grab glyph, upgrade shard durability or jump height",
+      "elements": [
+        "tap-to-place platforms",
+        "auto-crumbling floors",
+        "glyph collection",
+        "upgrade tree",
+        "high-score chase"
+      ],
+      "aesthetics": "Deep black void with faint purple depth gradient, crystal shards are icy cyan-white geometric polygons, crumble animation is a shatter burst, player is a glowing white dot with streak trail, ambient crystal chime on placement",
+      "buildPrompt": "Build a single-file HTML5 mobile-first endless climber called 'Shard Ascent'. Canvas-based, 60fps. Background: black with subtle vertical purple gradient. Player: 12px glowing white circle with 8px trail, affected by gravity (0.4px/frame^2), jump velocity -10px on tap/spacebar. Shards: tap anywhere on canvas to embed a 40x8px crystal polygon at that position; shards last 8 seconds then crumble (shatter animation over 0.3s); maximum 20 shards on screen at once; player can stand on shards and jump from them. Camera: scrolls up as player climbs, shift all objects down when player goes above 40% screen height; height in meters = pixels climbed / 50. Glyphs: small spinning diamond shapes spawn at random heights every 200px; collect by touching; 3 types: Reinforce (shard lifetime +2s), Boost (next jump height +50%), Multiplier (score x2 for 10s). Game over: player falls below screen bottom, show height reached + best + glyph count. Touch tap places shard; spacebar jumps when on a shard. Score = height in meters. HUD: height top-left, best top-right, active upgrades bottom.",
+      "profitability": 4,
+      "easeToBuild": 4,
+      "speedToBuild": 5,
+      "enjoyment": 4,
+      "reasoning": "Climbers have extremely high retry rates driving interstitial ad frequency. Shard placement adds a creative layer above pure reflex. Fast to build: canvas physics + placement logic is straightforward. The crumbling floor adds urgency without complexity.",
+      "aiScore": "4.2",
+      "id": "c9b771c0ad88",
+      "userScore": null,
+      "userFeedback": "",
+      "status": "idea",
+      "createdAt": "2026-06-15T05:18:23Z",
+      "builtAt": null,
+      "htmlFile": null,
+      "refinements": []
+    },
+    {
+      "title": "Rift Keeper",
+      "tagline": "Seal the rifts. Hold the line. Alone.",
+      "description": "Dimensional rifts tear open across a dark arena. Tap a rift to begin sealing it — a circular progress ring fills over 2 seconds. If a rift fully opens before you seal it, enemies pour out and drain your shield. More rifts spawn over time, faster and closer together, demanding ruthless prioritisation.",
+      "genre": "Roguelite survival / hyper-casual",
+      "coreLoop": "Spot rift, tap to seal, manage multiple rifts, prioritise oldest, collect essence drops, spend on shield or seal speed",
+      "elements": [
+        "tap-to-seal rifts",
+        "threat prioritisation",
+        "enemy wave overflow",
+        "essence economy",
+        "upgrade paths"
+      ],
+      "aesthetics": "Dark grey arena, rifts are jagged glowing purple tears in space, seal progress ring is white, enemies are red geometric shards, essence drops are small gold sparks, deep resonant tear-sound when rift opens",
+      "buildPrompt": "Build a single-file HTML5 mobile-first survival game called 'Rift Keeper'. Canvas 60fps. Dark arena (#0c0c14 bg). Gameplay: rifts spawn as animated purple jagged ellipses at random canvas positions; each rift has a threat bar that fills over (5s - 0.1s per wave); tap a rift to begin sealing — hold finger/mouse on it for 2s (show circular white progress ring); if threat bar fills before seal: rift opens fully, spawns 3 red shard enemies that drift toward center and deal 10 shield dmg each on arrival, then vanish; sealed rifts drop 5 gold essence orbs that auto-collect (move toward central orb over 1s). Rift spawning: 1 rift per 4s at wave 1; every wave (20s) adds 0.5 rifts/s and reduces threat timer by 0.1s. Shield: starts 100, shown as arc around a central orb; game over at 0. Essence shop (bottom bar, 3 icons): Reinforce (50e, +20 shield), Swift Seal (30e, -0.3s seal time, stackable 5x), Barrier (80e, next opened rift does 0 dmg, 1-use). Wave counter and shield shown in HUD. Touch hold and mouse hold both seal. Game over: wave reached + essence collected + retry.",
+      "profitability": 4,
+      "easeToBuild": 4,
+      "speedToBuild": 4,
+      "enjoyment": 4,
+      "reasoning": "Survival tap games with escalating threat have excellent session depth and ad fit. Multi-rift prioritisation is a satisfying stress loop that drives replays. No complex physics: rift spawn and progress timers are simple state machines. Well-rounded scores across all metrics.",
+      "aiScore": "4.0",
+      "id": "c9b771c01ab6",
+      "userScore": null,
+      "userFeedback": "",
+      "status": "idea",
+      "createdAt": "2026-06-15T05:18:23Z",
+      "builtAt": null,
+      "htmlFile": null,
+      "refinements": []
+    },
+    {
+      "title": "Hex Bloom",
+      "tagline": "Match. Bloom. Chain the cosmos.",
+      "description": "A hexagonal grid of colored orbs fills the screen. Tap any orb to trigger a bloom — it expands and matches all adjacent orbs of the same color, which then bloom in turn, cascading outward in a wave. New orbs drift in from the edges. Plan your tap to trigger a galaxy-spanning chain reaction.",
+      "genre": "Match / puzzle",
+      "coreLoop": "Spot cluster, tap to bloom, cascade propagates, clear hex region, plan next tap before grid overfills",
+      "elements": [
+        "tap-to-bloom",
+        "hex grid cascade",
+        "strategic planning",
+        "edge refill",
+        "combo multiplier"
+      ],
+      "aesthetics": "Space black background, orbs are small glowing hex circles in 5 vivid colors (nebula pink, plasma blue, solar gold, void green, stellar red), bloom animation is radial pulse expanding outward, distant star parallax, soft cosmic chime on each bloom tier",
+      "buildPrompt": "Build a single-file HTML5 mobile-first puzzle game called 'Hex Bloom'. Canvas-based hex grid, 60fps. Background: space black with slow-drifting star dots (parallax). Grid: 9 columns x 11 rows of hex cells (offset rows), each cell 36px wide; 5 orb colors (pink #ff4d8f, blue #4d9fff, gold #ffd24d, green #4dff9f, red #ff6b4d). On load, fill grid 70% with random orbs. Bloom mechanic: tap an orb to trigger a radial pulse animation (0.4s), then flood-fill all connected same-color adjacent orbs, each blooming in sequence with 80ms delay per tier creating a wave effect, clear all bloomed orbs, score = (count bloomed)^1.8 * current_multiplier. After clear: orbs above fall down, then new orbs drift in from random top-edge cells (1 per 1.5s, up to grid 80% full). Combo multiplier: if bloom clears 8+ orbs, multiplier += 0.5 (shown top-right, resets after 5s inactivity). Game over: grid reaches 100% full with no valid 3+ bloom available, show score and best. HUD: score top-left, multiplier top-right, orbs-cleared counter. Touch and mouse tap both work. No drag needed.",
+      "profitability": 3,
+      "easeToBuild": 3,
+      "speedToBuild": 3,
+      "enjoyment": 5,
+      "reasoning": "Match/bloom on hex grids is visually stunning and highly shareable — organic viral potential. Slightly harder to build (hex geometry, flood-fill) and lower ad density than idle/runner, but enjoyment ceiling is highest. A polished build could attract real organic traffic.",
+      "aiScore": "3.5",
+      "id": "c9b771c0e41a",
+      "userScore": null,
+      "userFeedback": "",
+      "status": "idea",
+      "createdAt": "2026-06-15T05:18:23Z",
+      "builtAt": null,
+      "htmlFile": null,
+      "refinements": []
     }
   ],
   "cycle": {
     "startHour": 5,
     "startMinute": 0,
-    "currentStage": 2,
-    "lastRun": "2026-06-14T05:11:12Z",
+    "currentStage": 3,
+    "lastRun": "2026-06-15T05:18:23Z",
     "history": [
       {
         "stage": 1,
@@ -163,9 +315,19 @@
         "summary": "Generated 5 ideas: Tap Forge, Neon Cascade, Void Dash, Merge Relic, Echo Tower"
       },
       {
+        "stage": 1,
+        "completedAt": "2026-06-15T05:18:23Z",
+        "summary": "Generated 5 ideas: Overload, Pulse Grid, Shard Ascent, Rift Keeper, Hex Bloom"
+      },
+      {
         "stage": 2,
-        "completedAt": "2026-06-14T06:16:17Z",
-        "summary": "Built: Tap Forge, Neon Cascade, Void Dash"
+        "completedAt": "2026-06-15T06:14:34Z",
+        "summary": "Built: Tap Forge, Neon Cascade, Overload"
+      },
+      {
+        "stage": 3,
+        "completedAt": "2026-06-15T07:13:10Z",
+        "summary": "Refined: Tap Forge"
       }
     ]
   }

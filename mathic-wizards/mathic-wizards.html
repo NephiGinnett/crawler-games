@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mathic Wizards</title>
+  <style>
+    body { margin: 0; padding: 0; background: #080814; overflow: hidden; }
+    #root { width: 100%; min-height: 100vh; }
+  </style>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+const { useState } = React;
+
+const FINGER_NAMES = ["Thumb", "Index", "Middle", "Ring", "Pinky"];
+const FINGER_SYMBOLS = ["👍", "☝️", "🖕", "💍", "🤙"];
+const FACE_NAMES = [...FINGER_NAMES, "Palm"];
+const FACE_ICONS = [...FINGER_SYMBOLS, "🪄"];
+
+if (!document.getElementById("mw-styles")) {
+  const s = document.createElement("style");
+  s.id = "mw-styles";
+  s.textContent = `
+    @keyframes twinkle { 0%,100%{opacity:0;transform:scale(0.8)} 50%{opacity:0.6;transform:scale(1.2)} }
+    @keyframes popIn { from{opacity:0;transform:scale(0.5)} to{opacity:1;transform:scale(1)} }
+    @keyframes slideUp { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
+    .mw-btn:hover { filter:brightness(1.15); transform:translateY(-1px); }
+    .mw-btn:active { transform:translateY(0); }
+  `;
+  document.head.appendChild(s);
+}
+
+// ── Band definitions ──────────────────────────────────────────────────────────
+// Each band earned is stored in player.bands as:
+// { type: "add"|"sub"|"div", fingers: [i, j] or [i] }
+// applyBands computes the effective palm value before battle.
+
+function applyBands(fingers, palm, bands) {
+  let p = palm;
+  for (const b of bands) {
+    if (b.type === "add") {
+      // Sum the two bound fingers, add to palm
+      p = p + fingers[b.fingers[0]] + fingers[b.fingers[1]];
+    } else if (b.type === "sub") {
+      // Sum the two bound fingers, subtract from palm
+      p = p - fingers[b.fingers[0]] - fingers[b.fingers[1]];
+    } else if (b.type === "div") {
+      // Divide palm by the bound finger (round, min 0)
+      const divisor = fingers[b.fingers[0]];
+      p = divisor === 0 ? p : Math.round(p / divisor);
+    }
+  }
+  return Math.max(0, p);
+}
+
+// Band metadata for display
+const BAND_META = {
+  add: { name: "Summon Band", icon: "🔗", color: "#7efff5", desc: (fi) => `${FINGER_NAMES[fi[0]]} + ${FINGER_NAMES[fi[1]]} → added to Palm` },
+  sub: { name: "Drain Band",  icon: "⛓",  color: "#ffb86c", desc: (fi) => `${FINGER_NAMES[fi[0]]} + ${FINGER_NAMES[fi[1]]} → subtracted from Palm` },
+  div: { name: "Split Ring",  icon: "💍", color: "#bd93f9", desc: (fi) => `Palm ÷ ${FINGER_NAMES[fi[0]]} (rounded)` },
+};
+
+// ── Schools & stages ──────────────────────────────────────────────────────────
+const SCHOOLS = [
+  { name:"School of Addus",    color:"#7efff5", headTitle:"Grand Summator",    headName:"Addus the Accumulator", bandType:"add", bandDefault:[0,1], minions:["Plusling","Carry Imp","The Adder","Sum Wraith"] },
+  { name:"School of Minuend",  color:"#ffb86c", headTitle:"High Subtractor",   headName:"Minuend the Eraser",    bandType:"sub", bandDefault:[3,4], minions:["Lessling","Take-Away Sprite","Deficit Shade","Null Creeper"] },
+  { name:"School of Factorum", color:"#bd93f9", headTitle:"Arch Multiplicant", headName:"Factorum the Magnifier",bandType:"div", bandDefault:[2],   minions:["Doublet","Times Wisp","Factor Fiend","The Repeater"] },
+  { name:"School of Quotis",   color:"#ff79c6", headTitle:"Lord Divisor",      headName:"Quotis the Splitter",   bandType:null,  bandDefault:[],    minions:["Half-Shade","The Remainder","Fraction Imp","Divisor Wraith"] },
+  { name:"The Void",           color:"#ff5555", headTitle:"The Final Zero",    headName:"Ø — The Null",          bandType:null,  bandDefault:[],    minions:["Void Wisp","The Erasure","Null Titan","Oblivion Shade"] },
+];
+
+const HW_TOTALS = [12, 18, 26, 36, 50];
+const HW_PALMS  = [3,   5,  8, 12, 20];
+
+function distribute(total, slots) {
+  const f = Array(slots).fill(0);
+  let rem = total;
+  for (let i = 0; i < slots && rem > 0; i++) {
+    const share = Math.ceil(rem / (slots - i));
+    f[i] = share; rem -= share;
+  }
+  return f;
+}
+
+function buildStage(idx) {
+  const school = Math.floor(idx / 5), slot = idx % 5;
+  const s = SCHOOLS[school];
+  const hwTotal = HW_TOTALS[school], hwPalm = HW_PALMS[school];
+  if (slot === 4) {
+    const hwFingers = distribute(hwTotal, 5);
+    const hwBands = s.bandType ? [{ type: s.bandType, fingers: s.bandDefault }] : [];
+    const hwEffectivePalm = applyBands(hwFingers, hwPalm, hwBands);
+    return { name:s.headName, title:s.headTitle, school:s.name, color:s.color, isHeadWizard:true, bandType:s.bandType, bandDefault:s.bandDefault, fingers:hwFingers, palm:hwPalm, effectivePalm:hwEffectivePalm, bands:hwBands };
+  }
+  const minTotal = Math.round(hwTotal * (0.3 + slot * 0.15));
+  const minPalm  = Math.max(0, Math.round(hwPalm * (slot / 5)));
+  return { name:s.minions[slot], title:`Minion of ${s.name}`, school:s.name, color:s.color, isHeadWizard:false, bandType:null, bandDefault:[], fingers:distribute(minTotal,5), palm:minPalm, effectivePalm:minPalm, bands:[] };
+}
+
+const STAGES = Array.from({ length: 25 }, (_, i) => buildStage(i));
+
+// ── Die mechanics ─────────────────────────────────────────────────────────────
+function shuffleDie(fingers, palm) {
+  const faces = [...fingers, palm];
+  const idx = [0,1,2,3,4,5];
+  for (let i = 5; i > 0; i--) { const j = Math.floor(Math.random()*(i+1)); [idx[i],idx[j]]=[idx[j],idx[i]]; }
+  return idx.map(i => ({ faceIndex:i, value:faces[i] }));
+}
+
+// ── Config bonuses ────────────────────────────────────────────────────────────
+// Returns a set of active bonus keys given the player's current bands
+function getActiveBonuses(bands) {
+  const bonuses = new Set();
+  for (const b of bands) {
+    if (b.type === "add" && b.fingers[0] === 0 && b.fingers[1] === 1) bonuses.add("the_gun");
+    if (b.type === "add" && b.fingers[0] === 1 && b.fingers[1] === 0) bonuses.add("the_gun");
+    if (b.type === "sub" && b.fingers[0] === 1 && b.fingers[1] === 2) bonuses.add("cub_scout");
+    if (b.type === "sub" && b.fingers[0] === 2 && b.fingers[1] === 1) bonuses.add("cub_scout");
+  }
+  return bonuses;
+}
+
+function runBattle(pF, pRawP, oF, oRawP, pEffP, oEffP, bonuses = new Set()) {
+  // Shuffle using effective palms as the face values shown on the die
+  const pDraw = shuffleDie(pF, pEffP ?? pRawP), oDraw = shuffleDie(oF, oEffP ?? oRawP);
+  const matchups = Array.from({ length:5 }, (_,i) => {
+    const p=pDraw[i], o=oDraw[i];
+    const tie = p.value===o.value, playerWins = !tie && p.value>o.value;
+    return { i, pFaceIndex:p.faceIndex, pValue:p.value, oFaceIndex:o.faceIndex, oValue:o.value, playerWins, tie };
+  });
+  const playerRoundWins = matchups.filter(m=>m.playerWins).length;
+  const roundWin = playerRoundWins >= 3;
+  const newPF=[...pF]; let newPP=pRawP; const newOF=[...oF]; let newOP=oRawP;
+  matchups.forEach(m => {
+    if (m.tie) {
+      // Both rolled faces increase by the tied value
+      const boost = m.pValue;
+      if (m.pFaceIndex === 5) newPP += boost; else newPF[m.pFaceIndex] += boost;
+      if (m.oFaceIndex === 5) newOP += boost; else newOF[m.oFaceIndex] += boost;
+      return;
+    }
+    if (m.playerWins) {
+      const abs = m.oFaceIndex===5 ? newOP : newOF[m.oFaceIndex];
+      if (m.pFaceIndex===5) newPP+=abs; else newPF[m.pFaceIndex]+=abs;
+      if (m.oFaceIndex===5) newOP=Math.max(0,newOP-abs); else newOF[m.oFaceIndex]=Math.max(0,newOF[m.oFaceIndex]-abs);
+    } else {
+      const abs = m.pFaceIndex===5 ? newPP : newPF[m.pFaceIndex];
+      if (m.oFaceIndex===5) newOP+=abs; else newOF[m.oFaceIndex]+=abs;
+      if (m.pFaceIndex===5) newPP=Math.max(0,newPP-abs); else newPF[m.pFaceIndex]=Math.max(0,newPF[m.pFaceIndex]-abs);
+    }
+  });
+  // ── The Gun bonus ──────────────────────────────────────────────────────────
+  // If player's palm face wins and The Gun is active, subtract palm value
+  // from the opponent's undrawn finger (can go negative)
+  let gunShot = null;
+  if (bonuses.has("the_gun")) {
+    const palmWin = matchups.find(m => m.pFaceIndex === 5 && m.playerWins);
+    if (palmWin) {
+      const undrawnOppFaceIdx = oDraw[5].faceIndex; // the face that sat out
+      const damage = palmWin.pValue; // effective palm value that won
+      if (undrawnOppFaceIdx === 5) {
+        newOP -= damage;
+      } else {
+        newOF[undrawnOppFaceIdx] -= damage;
+      }
+      gunShot = { targetFaceIndex: undrawnOppFaceIdx, damage };
+    }
+  }
+
+  // ── Cub Scout bonus ────────────────────────────────────────────────────────
+  // Sub band on Index + Middle: if player's palm wins, all player fingers +1
+  let cubScout = false;
+  if (bonuses.has("cub_scout")) {
+    const palmWin = matchups.find(m => m.pFaceIndex === 5 && m.playerWins);
+    if (palmWin) {
+      for (let i = 0; i < 5; i++) newPF[i] += 1;
+      cubScout = true;
+    }
+  }
+
+  return { matchups, playerRoundWins, roundWin, newPF, newPP, newOF, newOP, gunShot, cubScout };
+}
+
+// ── App ───────────────────────────────────────────────────────────────────────
+const PLAYER_START = { fingers:[2,1,1,1,0], palm:0, bands:[] };
+
+function MathicWizards() {
+  const [screen, setScreen]         = useState("title");
+  const [player, setPlayer]         = useState(PLAYER_START);
+  const [stageIndex, setStageIndex] = useState(0);
+  const [oppState, setOppState]     = useState({ fingers: STAGES[0].fingers, palm: STAGES[0].palm });
+  const [battleResult, setBattle]   = useState(null);
+  const [revealed, setRevealed]     = useState([]);
+  // Pending band config during BandReward screen or mid-prep reconfigure
+  const [pendingBand, setPendingBand] = useState(null);
+  const [configSource, setConfigSource] = useState("reward"); // "reward" | "prep"
+  const [pendingPowerUp, setPendingPowerUp] = useState(false);
+
+  const stage = STAGES[stageIndex];
+  // Merge static stage metadata with live opp fingers/palm
+  const liveStage = { ...stage, fingers: oppState.fingers, palm: oppState.palm, effectivePalm: applyBands(oppState.fingers, oppState.palm, stage.bands ?? []) };
+  // Effective palm with all bands applied
+  const effectivePalm = applyBands(player.fingers, player.palm, player.bands);
+
+  function startGame() {
+    setPlayer(PLAYER_START); setStageIndex(0);
+    setOppState({ fingers: STAGES[0].fingers, palm: STAGES[0].palm });
+    setBattle(null); setRevealed([]); setPendingBand(null);
+    setScreen("prep");
+  }
+
+  function doBattle() {
+    const result = runBattle(player.fingers, player.palm, liveStage.fingers, liveStage.palm, effectivePalm, liveStage.effectivePalm, getActiveBonuses(player.bands));
+    setBattle(result); setRevealed([]);
+    setScreen("battle");
+    result.matchups.forEach((_,i) => setTimeout(() => setRevealed(r=>[...r,i]), i*580+400));
+  }
+
+  function confirmBattle() {
+    if (!battleResult) return;
+    // Store raw palm back — bands are re-applied each time from raw
+    setPlayer(p => ({ ...p, fingers:battleResult.newPF, palm:battleResult.newPP }));
+    // Persist opponent's updated fingers/palm so retries face the same damaged foe
+    setOppState({ fingers: battleResult.newOF, palm: battleResult.newOP });
+    setScreen("levelResult");
+  }
+
+  function nextStage() {
+    const next = stageIndex + 1;
+    if (next >= 25) { setScreen("victory"); return; }
+    setStageIndex(next);
+    const nextStageData = STAGES[next];
+    if (nextStageData.isHeadWizard) {
+      // Boost head wizard's total by 50% of the player's current total die value
+      const playerTotal = [...player.fingers, player.palm].reduce((a,b)=>a+b,0);
+      const bonus = Math.round(playerTotal * 0.5);
+      const boostedTotal = nextStageData.fingers.reduce((a,b)=>a+b,0) + bonus;
+      const boostedFingers = distribute(boostedTotal, 5);
+      const boostedPalm = nextStageData.palm + Math.round(bonus * 0.2);
+      setOppState({ fingers: boostedFingers, palm: boostedPalm });
+    } else {
+      setOppState({ fingers: nextStageData.fingers, palm: nextStageData.palm });
+    }
+    setBattle(null); setRevealed([]);
+    setScreen("prep");
+  }
+
+  function retryStage() { setBattle(null); setRevealed([]); setScreen("prep"); }
+
+  function openConfigBands() {
+    // Clone current band assignments into pendingBand list for editing
+    setPendingBand(player.bands.map(b => ({ ...b, fingers: [...b.fingers] })));
+    setConfigSource("prep");
+    setScreen("configBands");
+  }
+
+  function saveConfigBands() {
+    setPlayer(p => ({ ...p, bands: pendingBand }));
+    setPendingBand(null);
+    setScreen("prep");
+  }
+
+  function updateConfigFinger(bandIdx, slot, fingerIdx) {
+    setPendingBand(bs => bs.map((b, i) => {
+      if (i !== bandIdx) return b;
+      const f = [...b.fingers];
+      f[slot] = fingerIdx;
+      return { ...b, fingers: f };
+    }));
+  }
+
+  function openBandReward() {
+    const s = SCHOOLS[Math.floor(stageIndex/5)];
+    setPendingBand({ type: s.bandType, fingers: [...s.bandDefault] });
+    setConfigSource("reward");
+    setScreen("bandReward");
+  }
+
+  function claimBand() {
+    if (pendingBand && configSource === "reward") {
+      setPlayer(p => ({ ...p, bands: [...p.bands, pendingBand] }));
+    }
+    setPendingBand(null);
+    setScreen("powerUp");
+  }
+
+  function applyPowerUp(fingerIdx) {
+    setPlayer(p => {
+      const fingers = [...p.fingers];
+      fingers[fingerIdx] += 1;
+      return { ...p, fingers };
+    });
+    setPendingPowerUp(false);
+    nextStage();
+  }
+
+  function updatePendingFinger(slot, fingerIdx) {
+    setPendingBand(b => {
+      if (Array.isArray(b)) return b; // shouldn't happen in reward screen
+      const f = [...b.fingers];
+      f[slot] = fingerIdx;
+      return { ...b, fingers: f };
+    });
+  }
+
+  const onLevelResultNext = stage.isHeadWizard && battleResult?.roundWin
+    ? (stage.bandType ? openBandReward : () => setScreen("powerUp"))
+    : nextStage;
+
+  return (
+    <div style={S.root}>
+      <Stars />
+      <div style={S.frame}>
+        {screen==="title"       && <TitleScreen onStart={startGame} />}
+        {screen==="prep"        && <PrepScreen player={player} effectivePalm={effectivePalm} stage={liveStage} stageIndex={stageIndex} onBattle={doBattle} onRestart={startGame} onConfigBands={player.bands.length > 0 ? openConfigBands : null} />}
+        {screen==="configBands"  && pendingBand && <ConfigBandsScreen bands={pendingBand} playerFingers={player.fingers} playerPalm={player.palm} onChangeFinger={updateConfigFinger} onSave={saveConfigBands} />}
+        {screen==="battle"      && battleResult && <BattleScreen result={battleResult} stage={liveStage} revealed={revealed} onConfirm={revealed.length===5 ? confirmBattle : null} />}
+        {screen==="levelResult" && <LevelResult cleared={battleResult?.roundWin} stage={stage} stageIndex={stageIndex} onNext={onLevelResultNext} onRetry={retryStage} onRestart={startGame} />}
+        {screen==="bandReward"  && pendingBand && <BandReward stage={stage} band={pendingBand} playerFingers={player.fingers} playerPalm={player.palm} onChangeFinger={updatePendingFinger} onClaim={claimBand} />}
+        {screen==="powerUp"      && <PowerUpScreen player={player} onChoose={applyPowerUp} />}
+        {screen==="victory"     && <VictoryScreen onRestart={startGame} />}
+      </div>
+    </div>
+  );
+}
+
+// ── Title ─────────────────────────────────────────────────────────────────────
+function TitleScreen({ onStart }) {
+  return (
+    <div style={S.center}>
+      <div style={S.titleGlow}>✦ MATHIC WIZARDS ✦</div>
+      <div style={S.subtitle}>A Battle of Numerical Sorcery</div>
+      <div style={S.flavorText}>Five fingers. A palm. Six die faces.<br/>Roll higher. Absorb. Grow.</div>
+      <button className="mw-btn" style={S.bigBtn} onClick={onStart}>⚡ BEGIN</button>
+      <div style={S.rulesBox}>
+        <div style={S.ruleTitle}>HOW TO PLAY</div>
+        <div style={S.ruleItem}>🎲 Your <b>5 fingers + palm</b> form your custom die</div>
+        <div style={S.ruleItem}>⚔️ Roll your die vs the opponent's — 5 times, no repeats</div>
+        <div style={S.ruleItem}>🏆 Win <b>3 of 5</b> to defeat each opponent</div>
+        <div style={S.ruleItem}>📈 Wins absorb the opponent's rolled face into yours</div>
+        <div style={S.ruleItem}>🧙 Defeat 4 minions then the Head Wizard of each school</div>
+        <div style={S.ruleItem}>🔗 Earn <b>Operatus Bands</b> that reshape your Palm</div>
+      </div>
+    </div>
+  );
+}
+
+// ── Die display ───────────────────────────────────────────────────────────────
+function DieDisplay({ fingers, palm, effectivePalm, color, label, bands }) {
+  const faces = [...fingers, palm];
+  const showPalmBonus = effectivePalm !== undefined && effectivePalm !== palm;
+  return (
+    <div style={{ ...S.dieCard, borderColor:color+"55" }}>
+      <div style={{ ...S.dieLabel, color }}>{label}</div>
+      <div style={S.dieGrid}>
+        {faces.map((v, i) => {
+          const isPalm = i === 5;
+          const isBound = bands && bands.some(b => b.fingers.includes(i));
+          return (
+            <div key={i} style={{ ...S.dieFace, borderColor: isBound ? color+"88" : color+"22", background: v===0 ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.05)", boxShadow: isBound ? `0 0 6px ${color}44` : "none" }}>
+              <span style={{ fontSize:13 }}>{FACE_ICONS[i]}</span>
+              <span style={{ fontSize:9, color:"#6050a0" }}>{FACE_NAMES[i]}</span>
+              <span style={{ fontSize:19, fontWeight:"bold", color: v===0 ? "#333" : color }}>{isPalm && showPalmBonus ? effectivePalm : v}</span>
+              {isPalm && showPalmBonus && <span style={{ fontSize:8, color:color+"99" }}>({v} raw)</span>}
+              {isBound && <span style={{ fontSize:8, color:color, letterSpacing:0.5 }}>BOUND</span>}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ ...S.dieTotalLine, color }}>
+        Die total: {[...fingers, effectivePalm ?? palm].reduce((a,b)=>a+b,0)}
+      </div>
+    </div>
+  );
+}
+
+// ── Band summary strip ────────────────────────────────────────────────────────
+function BandStrip({ bands, fingers, palm }) {
+  if (!bands || bands.length === 0) return null;
+  const bonuses = getActiveBonuses(bands);
+  return (
+    <div style={S.bandStrip}>
+      {bands.map((b, i) => {
+        const meta = BAND_META[b.type];
+        return (
+          <div key={i} style={{ ...S.bandPill, borderColor: meta.color+"55", color: meta.color }}>
+            {meta.icon} {meta.name}: {meta.desc(b.fingers)}
+          </div>
+        );
+      })}
+      {bonuses.has("the_gun") && (
+        <div style={{ ...S.bandPill, borderColor:"#ff996655", color:"#ff9966" }}>
+          🔫 THE GUN active — Palm win damages enemy's unrolled finger
+        </div>
+      )}
+      {bonuses.has("cub_scout") && (
+        <div style={{ ...S.bandPill, borderColor:"#88dd8855", color:"#88dd88" }}>
+          🐻 CUB SCOUT active — Palm win gives all fingers +1
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Stage header ──────────────────────────────────────────────────────────────
+function StageHeader({ stage, stageIndex }) {
+  const slot = stageIndex % 5;
+  return (
+    <div style={S.stageHeader}>
+      <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
+        <div style={{ fontSize:10, color:stage.color, letterSpacing:2, textTransform:"uppercase" }}>{stage.school}</div>
+        <div style={{ fontSize:15, color:"#e8e0ff", fontWeight:"bold" }}>{stage.name}</div>
+        <div style={{ fontSize:10, color:"#6050a0", fontStyle:"italic" }}>{stage.title}</div>
+      </div>
+      <div style={{ display:"flex", gap:5, alignItems:"center" }}>
+        {Array.from({length:5},(_,i)=>(
+          <div key={i} style={{ width:8, height:8, borderRadius:"50%", background: i<=slot ? stage.color : "rgba(255,255,255,0.1)", boxShadow: i<=slot ? `0 0 6px ${stage.color}` : "none" }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Prep ──────────────────────────────────────────────────────────────────────
+function PrepScreen({ player, effectivePalm, stage, stageIndex, onBattle, onRestart, onConfigBands }) {
+  return (
+    <div style={S.prepWrap}>
+      <StageHeader stage={stage} stageIndex={stageIndex} />
+      {stage.isHeadWizard && <div style={{ ...S.hwBanner, color:stage.color, borderColor:stage.color+"44" }}>⚔️ HEAD WIZARD BATTLE</div>}
+      <BandStrip bands={player.bands} fingers={player.fingers} palm={player.palm} />
+      <div style={S.twoCol}>
+        <DieDisplay fingers={player.fingers} palm={player.palm} effectivePalm={effectivePalm} color="#7efff5" label="✋ YOUR DIE" bands={player.bands} />
+        <DieDisplay fingers={stage.fingers}  palm={stage.palm}  effectivePalm={stage.effectivePalm} color={stage.color} label="🧙 THEIR DIE" bands={stage.bands} />
+      </div>
+      <div style={S.prepNote}>Each face drawn once per battle. Higher value wins.</div>
+      <div style={{ display:"flex", gap:8, justifyContent:"center", flexWrap:"wrap" }}>
+        <button className="mw-btn" style={S.bigBtn} onClick={onBattle}>⚔️ BATTLE</button>
+        {onConfigBands && <button className="mw-btn" style={S.smallBtn} onClick={onConfigBands}>🔗 CONFIGURE BANDS</button>}
+        <button className="mw-btn" style={S.smallBtn} onClick={onRestart}>↩ RESTART</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Battle ────────────────────────────────────────────────────────────────────
+function BattleScreen({ result, stage, revealed, onConfirm }) {
+  const { matchups, playerRoundWins, roundWin, newPF, newPP, newOF, newOP } = result;
+  const allRevealed = revealed.length === 5;
+  return (
+    <div style={S.battleWrap}>
+      <div style={{ ...S.battleTitle, color:stage.color }}>⚔️ vs {stage.name}</div>
+      <div style={S.rollGrid}>
+        {matchups.map((m,i) => {
+          const show = revealed.includes(i);
+          return (
+            <div key={i} style={{ ...S.rollCard, ...(show?(m.tie?S.rollTie:m.playerWins?S.rollWin:S.rollLoss):S.rollHidden), animation:show?"popIn 0.3s ease forwards":"none" }}>
+              <div style={S.rollNum}>#{i+1}</div>
+              {show ? <>
+                <div style={{ display:"flex",flexDirection:"column",alignItems:"center",gap:1 }}>
+                  <span style={{fontSize:13}}>{FACE_ICONS[m.pFaceIndex]}</span>
+                  <span style={{fontSize:9,color:"#5a7070"}}>{FACE_NAMES[m.pFaceIndex]}</span>
+                  <span style={{color:"#7efff5",fontSize:20,fontWeight:"bold"}}>{m.pValue}</span>
+                </div>
+                <span style={{color:"#444",fontSize:10}}>vs</span>
+                <div style={{ display:"flex",flexDirection:"column",alignItems:"center",gap:1 }}>
+                  <span style={{fontSize:13}}>{FACE_ICONS[m.oFaceIndex]}</span>
+                  <span style={{fontSize:9,color:"#705a5a"}}>{FACE_NAMES[m.oFaceIndex]}</span>
+                  <span style={{color:stage.color,fontSize:20,fontWeight:"bold"}}>{m.oValue}</span>
+                </div>
+                <div style={m.tie?S.tieTag:m.playerWins?S.winTag:S.lossTag}>{m.tie?"TIE":m.playerWins?"✓":"✗"}</div>
+              </> : <div style={{color:"#222",fontSize:24}}>?</div>}
+            </div>
+          );
+        })}
+      </div>
+      {allRevealed && (
+        <div style={{ animation:"slideUp 0.4s ease",display:"flex",flexDirection:"column",alignItems:"center",gap:12 }}>
+          <div style={roundWin?S.roundWinBanner:S.roundLossBanner}>
+            {roundWin?`🏆 VICTORY — ${playerRoundWins}/5`:`💀 DEFEATED — ${playerRoundWins}/5`}
+          </div>
+          {result.gunShot && (
+            <div style={S.gunShotBox}>
+              🔫 <b>THE GUN</b> — Palm fired into {FACE_NAMES[result.gunShot.targetFaceIndex]} for <b style={{color:"#ff5555"}}>−{result.gunShot.damage}</b>
+            </div>
+          )}
+          {result.cubScout && (
+            <div style={S.cubScoutBox}>
+              🐻 <b>CUB SCOUT</b> — Palm's victory rallies the hand! All fingers +1
+            </div>
+          )}
+          <div style={S.absorbBox}>
+            <div style={S.absorbTitle}>After Absorption</div>
+            <div style={{ display:"flex",gap:16,marginTop:6 }}>
+              {[{label:"YOUR DIE",faces:[...newPF,newPP],color:"#7efff5"},{label:"THEIR DIE",faces:[...newOF,newOP],color:stage.color}].map((side,si)=>(
+                <div key={si} style={{ display:"flex",flexDirection:"column",gap:3,alignItems:"flex-start" }}>
+                  <div style={{fontSize:9,color:side.color,letterSpacing:1,marginBottom:2}}>{side.label}</div>
+                  {side.faces.map((v,i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:4}}>
+                      <span style={{fontSize:11}}>{FACE_ICONS[i]}</span>
+                      <span style={{fontSize:9,color:"#5a4880",minWidth:34}}>{FACE_NAMES[i]}</span>
+                      <span style={{color:v===0?"#333":side.color,fontWeight:"bold",fontSize:13}}>{v}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+          <button className="mw-btn" style={S.bigBtn} onClick={onConfirm}>CONTINUE →</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Level Result ──────────────────────────────────────────────────────────────
+function LevelResult({ cleared, stage, stageIndex, onNext, onRetry, onRestart }) {
+  const slot = stageIndex % 5;
+  return (
+    <div style={S.center}>
+      {stage.isHeadWizard && <div style={{fontSize:11,letterSpacing:2,color:stage.color,textTransform:"uppercase",marginBottom:4}}>{stage.school}</div>}
+      <div style={cleared?S.clearedBanner:S.failedBanner}>
+        {cleared?(stage.isHeadWizard?`✨ ${stage.name} DEFEATED!`:`✓ ${stage.name} BESTED`):`💀 ${stage.name} WINS`}
+      </div>
+      {cleared && <div style={S.flavorText}>{stage.isHeadWizard?"The Head Wizard falls. A band awaits.": `Minion ${slot+1} of 4 cleared.`}</div>}
+      {!cleared && <div style={S.flavorText}>Your numbers fell short. Try again.</div>}
+      {cleared
+        ? <button className="mw-btn" style={S.bigBtn} onClick={onNext}>{stage.isHeadWizard && stage.bandType?"🔗 CLAIM BAND →":"NEXT OPPONENT →"}</button>
+        : <>
+            <button className="mw-btn" style={S.bigBtn} onClick={onRetry}>↩ TRY AGAIN</button>
+            <button className="mw-btn" style={{...S.bigBtn,background:"rgba(80,60,160,0.3)",boxShadow:"none",fontSize:13}} onClick={onRestart}>⚠ RESTART FROM SCRATCH</button>
+          </>
+      }
+    </div>
+  );
+}
+
+// ── Configure Bands ──────────────────────────────────────────────────────────
+function ConfigBandsScreen({ bands, playerFingers, playerPalm, onChangeFinger, onSave }) {
+  const effectivePreview = applyBands(playerFingers, playerPalm, bands);
+  return (
+    <div style={S.center}>
+      <div style={{ fontSize:11, letterSpacing:3, color:"#c9b8ff", textTransform:"uppercase" }}>Configure Operatus Bands</div>
+      <div style={S.flavorText}>Reassign your bands before the next battle.</div>
+      {bands.map((b, bi) => {
+        const meta = BAND_META[b.type];
+        const isTwoBand = b.type === "add" || b.type === "sub";
+        const isRing    = b.type === "div";
+        return (
+          <div key={bi} style={{ ...S.rulesBox, maxWidth:360 }}>
+            <div style={{ fontSize:12, fontWeight:"bold", color:meta.color, marginBottom:8 }}>{meta.icon} {meta.name}</div>
+            {isTwoBand && [0,1].map(slot => (
+              <div key={slot} style={{ marginBottom:8 }}>
+                <div style={{ fontSize:10, color:"#9080c0", marginBottom:4 }}>Finger {slot+1}:</div>
+                <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+                  {FINGER_NAMES.map((name, fi) => {
+                    const otherSlot = slot===0?1:0;
+                    const disabled = b.fingers[otherSlot]===fi;
+                    const selected = b.fingers[slot]===fi;
+                    return (
+                      <button key={fi} className="mw-btn" disabled={disabled}
+                        style={{ padding:"4px 10px", fontSize:11, background:selected?meta.color:"rgba(80,60,160,0.2)", color:selected?"#000":"#b0a0d8", border:`1px solid ${selected?meta.color:"rgba(140,110,255,0.2)"}`, borderRadius:6, cursor:disabled?"not-allowed":"pointer", opacity:disabled?0.3:1, transition:"all 0.15s" }}
+                        onClick={() => onChangeFinger(bi, slot, fi)}>
+                        {FINGER_SYMBOLS[fi]} {name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            {isRing && (
+              <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+                {FINGER_NAMES.map((name, fi) => {
+                  const selected = b.fingers[0]===fi;
+                  return (
+                    <button key={fi} className="mw-btn"
+                      style={{ padding:"4px 10px", fontSize:11, background:selected?meta.color:"rgba(80,60,160,0.2)", color:selected?"#000":"#b0a0d8", border:`1px solid ${selected?meta.color:"rgba(140,110,255,0.2)"}`, borderRadius:6, cursor:"pointer", transition:"all 0.15s" }}
+                      onClick={() => onChangeFinger(bi, 0, fi)}>
+                      {FINGER_SYMBOLS[fi]} {name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <div style={{ fontSize:12, color:"#9080c0" }}>
+        Palm preview: <b style={{ color:"#7efff5", fontSize:14 }}>{playerPalm}</b>
+        <span style={{ color:"#6050a0" }}> → </span>
+        <b style={{ color:"#7efff5", fontSize:14 }}>{effectivePreview}</b>
+      </div>
+      <button className="mw-btn" style={S.bigBtn} onClick={onSave}>✓ SAVE & RETURN</button>
+    </div>
+  );
+}
+
+// ── Band Reward ───────────────────────────────────────────────────────────────
+function BandReward({ stage, band, playerFingers, playerPalm, onChangeFinger, onClaim }) {
+  const meta = BAND_META[band.type];
+  const isTwoBand = band.type === "add" || band.type === "sub";
+  const isRing    = band.type === "div";
+  const preview   = applyBands(playerFingers, playerPalm, [band]);
+
+  return (
+    <div style={S.center}>
+      <div style={{fontSize:11,letterSpacing:3,color:meta.color,textTransform:"uppercase"}}>Operatus Band Unlocked</div>
+      <div style={{fontSize:26,fontWeight:"bold",color:meta.color,textShadow:`0 0 20px ${meta.color}88`}}>{meta.icon} {meta.name}</div>
+      <div style={{...S.rulesBox,maxWidth:360}}>
+        <div style={{fontSize:12,color:"#b0a0d8",lineHeight:1.9}}>
+          Claimed from <b style={{color:stage.color}}>{stage.name}</b>.<br/>
+          <b style={{color:meta.color}}>{meta.desc(band.fingers)}</b>
+        </div>
+      </div>
+
+      {/* Finger selector */}
+      <div style={{...S.rulesBox,maxWidth:360}}>
+        <div style={{fontSize:10,letterSpacing:2,color:"#6050a0",textTransform:"uppercase",marginBottom:10}}>
+          {isTwoBand ? "Choose which fingers to bind" : "Choose which finger to ring"}
+        </div>
+
+        {isTwoBand && [0,1].map(slot => (
+          <div key={slot} style={{marginBottom:8}}>
+            <div style={{fontSize:10,color:"#9080c0",marginBottom:4}}>Finger {slot+1}:</div>
+            <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+              {FINGER_NAMES.map((name,fi) => {
+                const otherSlot = slot===0?1:0;
+                const disabled = band.fingers[otherSlot]===fi;
+                const selected = band.fingers[slot]===fi;
+                return (
+                  <button key={fi} className="mw-btn" disabled={disabled}
+                    style={{padding:"4px 10px",fontSize:11,background:selected?meta.color:"rgba(80,60,160,0.2)",color:selected?"#000":"#b0a0d8",border:`1px solid ${selected?meta.color:"rgba(140,110,255,0.2)"}`,borderRadius:6,cursor:disabled?"not-allowed":"pointer",opacity:disabled?0.3:1,transition:"all 0.15s"}}
+                    onClick={() => onChangeFinger(slot, fi)}>
+                    {FINGER_SYMBOLS[fi]} {name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+
+        {isRing && (
+          <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+            {FINGER_NAMES.map((name,fi) => {
+              const selected = band.fingers[0]===fi;
+              return (
+                <button key={fi} className="mw-btn"
+                  style={{padding:"4px 10px",fontSize:11,background:selected?meta.color:"rgba(80,60,160,0.2)",color:selected?"#000":"#b0a0d8",border:`1px solid ${selected?meta.color:"rgba(140,110,255,0.2)"}`,borderRadius:6,cursor:"pointer",transition:"all 0.15s"}}
+                  onClick={() => onChangeFinger(0, fi)}>
+                  {FINGER_SYMBOLS[fi]} {name}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <div style={{marginTop:12,fontSize:11,color:"#9080c0"}}>
+          Palm preview: <b style={{color:meta.color,fontSize:14}}>{playerPalm}</b>
+          <span style={{color:"#6050a0"}}> → </span>
+          <b style={{color:meta.color,fontSize:14}}>{preview}</b>
+        </div>
+      </div>
+
+      <button className="mw-btn" style={S.bigBtn} onClick={onClaim}>EQUIP & ADVANCE →</button>
+    </div>
+  );
+}
+
+// ── Power Up ─────────────────────────────────────────────────────────────────
+function PowerUpScreen({ player, onChoose }) {
+  return (
+    <div style={S.center}>
+      <div style={{ fontSize:11, letterSpacing:3, color:"#d4af37", textTransform:"uppercase" }}>Your Power Grows</div>
+      <div style={{ fontSize:22, fontWeight:"bold", color:"#d4af37", textShadow:"0 0 20px rgba(212,175,55,0.6)" }}>✦ UPGRADE A FINGER ✦</div>
+      <div style={S.flavorText}>Choose one finger to increase by 1.</div>
+      <div style={{ display:"flex", flexDirection:"column", gap:8, width:"100%", maxWidth:320 }}>
+        {player.fingers.map((val, i) => (
+          <button key={i} className="mw-btn" onClick={() => onChoose(i)}
+            style={{ ...S.bigBtn, display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 20px", background:"rgba(60,40,160,0.3)", boxShadow:"none", border:"1px solid rgba(140,110,255,0.25)", marginTop:0 }}>
+            <span style={{ fontSize:18 }}>{FINGER_SYMBOLS[i]}</span>
+            <span style={{ color:"#b0a0d8", fontSize:13 }}>{FINGER_NAMES[i]}</span>
+            <span style={{ color:"#7efff5", fontSize:18, fontWeight:"bold" }}>{val} <span style={{ color:"#d4af37" }}>→ {val+1}</span></span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Victory ───────────────────────────────────────────────────────────────────
+function VictoryScreen({ onRestart }) {
+  return (
+    <div style={S.center}>
+      <div style={{fontSize:34,fontWeight:"bold",color:"#d4af37",textShadow:"0 0 30px rgba(212,175,55,0.8)",letterSpacing:3}}>✦ VICTORY ✦</div>
+      <div style={S.flavorText}>All five schools have fallen.<br/>Ø — The Null has been silenced.<br/>The Mathic realm is yours.</div>
+      <button className="mw-btn" style={S.bigBtn} onClick={onRestart}>↩ PLAY AGAIN</button>
+    </div>
+  );
+}
+
+// ── Stars ─────────────────────────────────────────────────────────────────────
+function Stars() {
+  const stars = Array.from({length:50},(_,i)=>({id:i,x:Math.random()*100,y:Math.random()*100,size:Math.random()*2+0.5,dur:2+Math.random()*4,delay:Math.random()*5}));
+  return (
+    <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:0}}>
+      {stars.map(s=>(
+        <div key={s.id} style={{position:"absolute",left:`${s.x}%`,top:`${s.y}%`,width:s.size,height:s.size,borderRadius:"50%",background:"#c9d6ff",opacity:0,animation:`twinkle ${s.dur}s ease-in-out ${s.delay}s infinite`}} />
+      ))}
+    </div>
+  );
+}
+
+// ── Styles ────────────────────────────────────────────────────────────────────
+const S = {
+  root: { minHeight:"100vh",background:"linear-gradient(135deg,#080814 0%,#0d1133 60%,#080814 100%)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Georgia',serif",color:"#e8e0ff",padding:12,position:"relative" },
+  frame: { position:"relative",zIndex:1,width:"100%",maxWidth:680,background:"rgba(8,8,28,0.9)",border:"1px solid rgba(140,110,255,0.25)",borderRadius:18,boxShadow:"0 0 80px rgba(80,60,200,0.12)",padding:"24px 20px",backdropFilter:"blur(16px)" },
+  center: { display:"flex",flexDirection:"column",alignItems:"center",gap:14,textAlign:"center" },
+  titleGlow: { fontSize:34,fontWeight:"bold",letterSpacing:5,color:"#c9b8ff",textShadow:"0 0 24px rgba(180,140,255,0.8)" },
+  subtitle: { fontSize:11,color:"#7060a0",letterSpacing:3,textTransform:"uppercase" },
+  flavorText: { color:"#9080c0",fontSize:13,lineHeight:1.8 },
+  bigBtn: { padding:"11px 28px",background:"linear-gradient(135deg,#3a1f90,#6c2de0)",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontFamily:"Georgia,serif",letterSpacing:1,cursor:"pointer",boxShadow:"0 4px 24px rgba(108,45,224,0.4)",marginTop:4,transition:"all 0.15s" },
+  smallBtn: { padding:"8px 16px",background:"rgba(80,60,160,0.25)",color:"#9080c0",border:"1px solid rgba(140,110,255,0.2)",borderRadius:6,fontSize:12,fontFamily:"Georgia,serif",cursor:"pointer",transition:"all 0.15s",marginTop:4 },
+  rulesBox: { background:"rgba(255,255,255,0.03)",border:"1px solid rgba(140,110,255,0.12)",borderRadius:12,padding:"14px 18px",maxWidth:420,width:"100%" },
+  ruleTitle: { fontSize:10,letterSpacing:2,color:"#6050a0",textTransform:"uppercase",marginBottom:10 },
+  ruleItem: { fontSize:12,color:"#b0a0d8",marginBottom:5,textAlign:"left" },
+  stageHeader: { display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4 },
+  hwBanner: { textAlign:"center",fontSize:11,letterSpacing:3,border:"1px solid",borderRadius:6,padding:"5px 0",textTransform:"uppercase" },
+  bandStrip: { display:"flex",flexDirection:"column",gap:4 },
+  bandPill: { fontSize:10,border:"1px solid",borderRadius:6,padding:"3px 10px",letterSpacing:0.5 },
+  prepWrap: { display:"flex",flexDirection:"column",gap:10 },
+  twoCol: { display:"grid",gridTemplateColumns:"1fr 1fr",gap:10 },
+  dieCard: { background:"rgba(60,40,160,0.08)",border:"1px solid",borderRadius:12,padding:"10px 8px",display:"flex",flexDirection:"column",gap:6 },
+  dieLabel: { fontSize:10,letterSpacing:2,textTransform:"uppercase",textAlign:"center" },
+  dieGrid: { display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:4 },
+  dieFace: { border:"1px solid",borderRadius:7,padding:"5px 3px",display:"flex",flexDirection:"column",alignItems:"center",gap:1 },
+  dieTotalLine: { fontSize:10,textAlign:"center",letterSpacing:1,opacity:0.5 },
+  prepNote: { fontSize:11,color:"#5a4880",textAlign:"center" },
+  battleWrap: { display:"flex",flexDirection:"column",gap:14,alignItems:"center" },
+  battleTitle: { fontSize:20,fontWeight:"bold",letterSpacing:2 },
+  rollGrid: { display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:6,width:"100%" },
+  rollCard: { background:"rgba(60,40,160,0.12)",border:"1px solid rgba(140,110,255,0.2)",borderRadius:9,padding:"10px 4px",textAlign:"center",display:"flex",flexDirection:"column",gap:4,alignItems:"center",justifyContent:"center",minHeight:100 },
+  rollHidden: { opacity:0.1 },
+  rollWin:  { borderColor:"rgba(100,255,200,0.4)",background:"rgba(0,160,110,0.1)" },
+  rollLoss: { borderColor:"rgba(255,80,80,0.4)",background:"rgba(160,0,0,0.1)" },
+  rollTie:  { borderColor:"rgba(200,180,80,0.4)",background:"rgba(140,120,0,0.1)" },
+  rollNum:  { fontSize:9,color:"#5a4880",letterSpacing:1 },
+  winTag:   { color:"#7efff5",fontWeight:"bold",fontSize:14 },
+  lossTag:  { color:"#ff6b6b",fontWeight:"bold",fontSize:14 },
+  tieTag:   { color:"#d4af37",fontWeight:"bold",fontSize:11 },
+  roundWinBanner:  { fontSize:18,color:"#7efff5",fontWeight:"bold",textShadow:"0 0 14px rgba(100,255,200,0.5)" },
+  roundLossBanner: { fontSize:18,color:"#ff6b6b",fontWeight:"bold" },
+  absorbBox: { background:"rgba(255,255,255,0.03)",border:"1px solid rgba(140,110,255,0.1)",borderRadius:10,padding:"10px 16px" },
+  absorbTitle: { fontSize:10,letterSpacing:2,color:"#6050a0",textTransform:"uppercase",marginBottom:2 },
+  clearedBanner: { fontSize:24,color:"#d4af37",textShadow:"0 0 20px rgba(212,175,55,0.6)",fontWeight:"bold" },
+  gunShotBox:   { fontSize:13, color:"#ff9966", background:"rgba(255,80,0,0.08)",   border:"1px solid rgba(255,80,0,0.25)",  borderRadius:8, padding:"7px 16px", textAlign:"center" },
+  cubScoutBox:  { fontSize:13, color:"#88dd88", background:"rgba(80,200,80,0.07)",  border:"1px solid rgba(80,200,80,0.25)", borderRadius:8, padding:"7px 16px", textAlign:"center" },
+  failedBanner:  { fontSize:24,color:"#ff6b6b",fontWeight:"bold" },
+};
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(MathicWizards));
+  </script>
+</body>
+</html>
